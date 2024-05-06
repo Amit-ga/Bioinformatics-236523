@@ -1,0 +1,389 @@
+---
+title: "Homework 2"
+author: "Almog Angel"
+Students: "<student name 1> <student ID 1> <student name 2> <student ID 2>"
+date: "15/02/2024"
+output: html_document
+---
+
+- Load packages and set working directory
+```{r}
+library(DESeq2)
+library(ashr)
+library(EnhancedVolcano)
+library(factoextra)
+install.packages("BiocManager")
+BiocManager::install("clusterProfiler")
+library(clusterProfiler)
+library(msigdbr)
+library(tidyverse)
+library(GEOquery, quietly = T)
+
+#setwd("C:/Users/Hen/OneDrive - Technion/intro_to_bioinformatics/HW2")
+setwd("C:/Users/Amit_g/Desktop/Bio_HW/HW2")
+```
+
+- In this homework assignment, you will perform differential gene expression analysis
+- Read the abstract of the study "Temporal changes in postprandial blood transcriptomes reveal subject-specific pattern of expression of innate immunity genes after a high-fat meal" by Danielle G Lemay et a. (pdf file attached)
+
+(1) Explain in your own words the term "whole blood transcriptome" (up to 30 words)
+(2) Explain in your own words the objective and design of the study (up to 250 words)
+```{}
+Write your answer here:
+(1)
+Whole blood transcriptome refers to the collection of RNA sequences in a blood
+cell. It is used to capture both coding and non-coding RNA and to quantify gene
+expression.
+(2)
+The objective of the study was to investigate the effects of a high-fat meal on the expression of genes related to innate immunity in the blood over time, focusing on individual-specific whole blood transcriptome patterns.
+The study employed a crossover intervention trial design involving 5 subjects. Each subject underwent the intervention of consuming a high-fat meal supplemented with either a placebo, blueberry powder, or docosahexaenoic acid (DHA). Blood samples were collected from each subject in both fasting and postprandial (3-hour and 6-hour) states. In total, 45 whole blood transcriptomes were analyzed using RNA sequencing.
+After analyzing the whole blood transcriptomes using RNA sequencing, the selected target genes were validated using 20 other participants, using quantitative reverse-transcription polymerase chain reaction.
+By conducting this validation step, the researchers aimed to confirm the findings from the initial RNA sequencing analysis and ensure the accuracy and reliability of the results regarding the expression levels of the target genes.
+```
+
+- Take a look at the manuscript, find the Gene Expression Omnibus (GEO) accession number
+- Write it down here:
+```{}
+GEO accession number:GSE127530
+```
+
+- Go in to the GEO website and search for this accession number.
+- Download the counts data (the second one: "fixed")
+- Download the Series Matrix File(s)
+
+- Read the count matrix and metadata into the corresponding variables below
+```{r}
+counts <- read.table('GSE127530_fixed_combinedCounts.txt.gz')
+gse <- getGEO(filename='GSE127530_series_matrix.txt')
+```
+
+- Convert metadata to a tibble
+- Select and rename the following columns and store it back into "metadata":
+Sample = description
+Subject = `study subject id #:ch1`
+Day = `test day:ch1`
+Time = `time of blood draw:ch1`
+- Make sure the "Time" column is in factor class
+```{r}
+metadata <- as_tibble(gse)
+metadata <- metadata %>%
+  dplyr::select(Sample = description,
+                Subject = study.subject.id...ch1,
+                Day = test.day.ch1,
+                Time = time.of.blood.draw.ch1) 
+
+metadata <- mutate(metadata, Time = as.factor(Time))
+
+```
+
+- Make the reference level for Time be the "Fasting" condition
+```{r}
+metadata$Time <- relevel(metadata$Time, ref="fasting")
+```
+
+- Remove genes with zero total counts
+```{r}
+# Sum counts across all samples for each gene
+counts$total_counts <- rowSums(counts)
+# Filter out genes with zero total counts
+counts <- counts[counts$total_counts > 0, ]
+# Remove the total_counts column (optional)
+counts <- counts[, -ncol(counts)]
+
+```
+
+- Make a DESeq2 object called "dds" and use the Time column for the design
+* Don't forget to check that samples in colData and countData match
+* In this example tidy = FALSE (use ?DESeqDataSetFromMatrix to learn why)
+```{r}
+# Make sure the counts matrix corresponds to the metadata
+# Replace "." with "-" in sample names
+metadata$Sample <- gsub("-", ".", metadata$Sample)
+# Reorder metadata based on the order of counts cols
+metadata <- metadata[match(colnames(counts), metadata$Sample), ]
+if(all(metadata$Sample == colnames(counts))){
+  dds <- DESeqDataSetFromMatrix(countData=counts, 
+                              colData=metadata,
+                              design= ~Time, 
+                              tidy=FALSE)
+}
+  
+
+```
+
+- Run DESeq2
+```{r}
+dds <- DESeq(dds)
+```
+
+- We are now comparing the groups of fasting and time = 3 hours 
+
+- Use the function lfcShrink() to adjust the LFC values with the following arguments:
+  (1) coef="Time_3.hr.postprandial_vs_fasting" for the name of the coefficient to shrink
+  (2) type="apeglm"
+- Store the results back into "res"
+```{r}
+res <- lfcShrink(dds=dds, coef="Time_3.hr.postprandial_vs_fasting", 
+                 type="apeglm")
+```
+
+
+- Sort "res" by the adjusted p-values from lowest to highest and store in "resOrdered"
+```{r}
+resOrdered <- res[order(res$pvalue),]
+resOrdered
+```
+
+- Did you find any significant genes (adjusted p-value < 0.05)? If so, how many?
+```{r}
+sig_adjusted_genes <- rownames(res)[which(res$padj < 0.05)]
+length(sig_adjusted_genes)
+```
+```{}
+Write your answer here:
+Yes, we found 85 significant genes.
+
+```
+
+
+- Use the function vst() to extract the normalized counts from dds into "counts.vst"
+```{r}
+?vst()
+counts.vst <- vst(dds)
+counts.vst
+
+```
+
+- Use the function plotPCA() to generate a ggplot2 object for the PCA visualization and store it into "pcaData":
+  (1) Use the top 1000 variable genes
+  (2) Use intgroup=c("Subject", "Day") for grouping
+  (3) Use returnData = TRUE
+```{r}
+pcaData <- plotPCA(counts.vst, ntop=1000, intgroup=c('Subject','Day'), returnData=TRUE)
+```
+
+- Use ggplot to plot the object you made above:
+  (1) Plot the percent of variance explained in PC1 and PC2 labels
+  (2) Color points by Subject
+  (3) Shape points by Day
+```{r}
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+ggplot(pcaData, aes(x = PC1, y = PC2, color = Subject, shape = Day)) +
+  geom_point(size =3) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  coord_fixed() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle("PCA with VST data")
+```
+
+
+- Write a short script that preform hierarchical or kmeans clustering (choose one):
+(1) Extract the data from "counts.vst" using the assay(function)
+(2) Use only top 1,000 variable genes
+(3) Calculate distance matrix
+(4) Use the Elbow method to decide the optimal number of clusters
+(5) Plot the results in a dendogram for the hierarchical clustering or use fviz_cluster() for kmeans
+
+```{r}
+# (1) 
+normcounts <- assay(counts.vst)
+
+# (2)
+var_per_gene <- apply(normcounts, 1, var)  # Calculate the variance per gene
+selectedGenes <- names(var_per_gene[order(var_per_gene, decreasing = T)][1:1000]) # Take the top 1000 variable genes
+normcounts.top1Kvar <- t(normcounts[selectedGenes,])  # Construct a new matrix only for the top 1000 genes
+
+# (3) 
+# Make sample named informative
+rownames(normcounts.top1Kvar) <- paste0(metadata$Day, "_", metadata$Subject, "_", seq(1:nrow(normcounts.top1Kvar)))
+
+# Construct a distance matrix based on pairwise euclidean distances between all counts 
+dist_mat <- dist(normcounts.top1Kvar, method = 'euclidean')
+# View(as.matrix(dist_mat))
+
+# (4) 
+fviz_nbclust(normcounts.top1Kvar, FUN=hcut, method = "wss") + ggtitle("the Elbow Method")
+
+```
+```{r}
+# (5)  
+# we conclude that: 
+# the most significant change in sum of square is achieved for 2 clusters 
+kmeans.out <- kmeans(normcounts.top1Kvar, centers = 2, nstart = 25)
+fviz_cluster(kmeans.out, data = normcounts.top1Kvar) + 
+theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+- Looking at the PCA and the clustering you made above:
+(1) What is the main source of variation among samples in this study?
+(2) What is the second source of variation?
+(3) What led you to this conclusion?
+```{}
+answer:
+From the PCA and clustering results we conclude that the main source of variation
+among samples in this study - is the Subject and the second source is the Day.
+In the PCA plot, each figure is positioned according to its' transcriptome.
+We can easily see, that the samples are clustered according to the subjuct (i.e,
+transcriptoms that belong to the same subject differ less than to transcriptomes of other subjects).
+Same goes for the Day, although less distinctly than the Subject, transcriptoms that taken from to the same day,
+differ less than to transcriptomes taken in the other days.
+In the cluster plot, we can see that all the samples of a given subject, are located in a single cluster. 
+Since we have just two centers, we can see that the left one contains all the 
+samples from subjects 9, 17, while the right cluster contains all the samples from the other subjects.
+
+```
+* Hint: Look at Figure 1A in the manuscript.
+
+
+- Make a second DESeq2 object called "dds2"
+- This time make use of the information you gained from the PCA above to in the "design" argument
+```{r}
+dds2 <- DESeqDataSetFromMatrix(countData=counts, 
+                              colData=metadata, 
+                              design= ~Subject+Day+Time,
+                              tidy=FALSE)
+```
+
+- How did your new object differ from the old one? Explain why your results should be better now.
+```{}
+Write your answer here:
+The configuration of the analysis has been modified in response to identified variations.
+Adjustments were made to the design to account for a recognized source of variability, based on prior analysis results, the primary contributor to variation was identified as the Subject, and second was identified as The time (and day). By incorporating "Subject", "Time" and "Day" into the design, the intention is to diminish the impact of subject and time-related variation, allowing us to focus on assessing the impact of the experimental condition - our Treatment.
+This adjustment is expected to yield better results that are more closely aligned with the diverse treatments administered. Therefore, if the Subject and Time indeed play a significant role in the overall variation, the modified design should lead to more pronounced and statistically significant adjusted p-values when comparing different treatments. This serves as a refinement from the initial DESeq analysis.
+
+```
+
+- Run DESeq() and lfcShrink() again, save the results into "res2" and sort by adjusted p-value in "resOrdered2"
+```{r}
+dds2 <- DESeq(dds2)
+res2 <- lfcShrink(dds=dds2, coef="Time_3.hr.postprandial_vs_fasting", 
+                 type="apeglm")
+resOrdered2 <- res2[order(res2$pvalue),]
+```
+
+- How many significant genes (adjusted p-value < 0.05) did you get this time?
+```{r}
+length(rownames(res2)[which(res2$padj < 0.05)])
+```
+
+```{}
+Write your answer here:
+2154
+```
+
+- Explain in short the meaning of each column in "resOrdered2"
+```{}
+Write your answer here:
+1. log2FoldChange: The value of applying the log function (of base 2) on the ratio of the normalized counts of the      Time_3.hr.postprandial and the fasting groups.
+
+2.baseMean: The average of normalized counts for a particular gene across all samples. It represents the mean expression level of a gene across all samples in the experiment, irrespective of the experimental groups.
+
+3.lfcSE: The standard error of the log2 fold change. It quantifies the uncertainty or variability associated with the estimated log2 fold change. A smaller lfcSE generally indicates a more precise estimate.
+
+4. pvalue: The p-value associated with the test of whether the gene is differentially expressed. The p-value indicates the probability of observing the observed log2 fold change (or more extreme) if there is no true difference in expression between groups. A small p-value suggests evidence against the null hypothesis of no differential expression.
+
+5padj: Adjusted p-value, corrected for multiple testing. In multiple testing scenarios, such as comparing expression levels for many genes, the likelihood of obtaining false positives increases. The adjusted p-value (padj) corrects for this by applying methods (in our case the Benjamini-Hochberg procedure) to control the false discovery rate (FDR).
+
+```
+
+- Visualize the results with a volcano plot as we did in the tutorial
+- Change the following arguments to:
+  (1) FCcutoff=0.5
+  (2) pCutoff=0.05
+  (3) xlim=c(-1.5, 1.5)
+  (4) ylim=c(0, 30)
+```{r}
+EnhancedVolcano::EnhancedVolcano(resOrdered2,
+                                lab = rownames(resOrdered2),
+                                x = 'log2FoldChange',
+                                y = 'padj',
+                                labSize=3,
+                                FCcutoff=0.5,
+                                pCutoff=0.05,
+                                xlim=c(-1.5, 1.5),
+                                ylim=c(0, 30))
+
+```
+
+- Look at the volcano plot and and explain in short the meaning of each axis:
+```{}
+1. log2FoldChange (x-axis) - Fold change (FC) is the ratio of expression levels between two conditions, in our case between two groups: Time_3.hr.postprandial and the fasting.
+The log2 transformation applied to make the scale symmetric around zero.
+
+2. padj (y-axis) - As we've seen in the lecture, the p-value is a measure of the evidence against the null hypothesis,  used to assess the significance of the differential gene expression between the two conditions (our two groups).
+padj are adjustments of the p-values to control the false positive rate when performing multiple statistical tests using the BH method.
+```
+
+
+- Now lets try to understand the meaning of the differential expressed genes (DEG).
+- Take a look at the genes names (rownames)
+```{r}
+View(data.frame(resOrdered2))
+```
+
+- Pick several genes you like from the most DEG
+- Google their names, try to find if they have anything in common
+- In your answer, mention the genes and what did you found about them
+```{}
+Write your answer here:
+we chose the genes that presented to be the most significant according to the volcano plot:
+1. PER1 (Period Circadian Regulator 1): PER1 is involved in the regulation of circadian rhythms, playing a crucial role in the body's internal clock. It helps control the timing of various physiological processes, including sleep-wake cycles.
+
+2. DDIT4 (DNA Damage Inducible Transcript 4): DDIT4 is a stress-responsive gene. It plays a role in inhibiting the mTOR pathway, which regulates cell growth and survival. DDIT4 is involved in cellular responses to various stresses, including DNA damage and nutrient deprivation.
+
+3. NROB2 (Nuclear Receptor Subfamily 0 Group B Member 2): NROB2 is a nuclear receptor involved in the regulation of steroidogenesis. It plays a role in the development of reproductive and adrenal glands, influencing hormone production.
+
+4. PRRG4 (Proline Rich and Gla Domain 4): PRRG4 is a gene that encodes a protein containing both proline-rich and Gla (gamma-carboxyglutamic acid) domains.Proteins with Gla domains are often involved in blood coagulation and calcium binding.
+
+5. CPT1A (Carnitine Palmitoyltransferase 1A): CPT1A is a key enzyme involved in fatty acid metabolism. It catalyzes the transfer of long-chain fatty acids into mitochondria for beta-oxidation, a process that produces energy. CPT1A plays a crucial role in regulating lipid metabolism and energy balance in cells.
+
+While these genes have diverse functions, one potential commonality is their involvement in cellular regulation and response to various stresses. PER1, DDIT4, and CPT1A, in particular, play roles in the regulation of cellular processes such as circadian rhythms, stress response, and metabolism. Understanding the functions of these genes provides insights into the intricate molecular mechanisms that contribute to the proper functioning of cells and the overall health of an organism.
+```
+
+- Now you  will use functional enrichment analysis with the Hallmark pathways gene sets.
+- We learned two ways to perform functional enrichment analysis - over representation and gene set enrichment analysis (GSEA). Here you will run GSEA.  
+
+- First we need to create an ordered vector by the log fold change with the gene symbols as names:
+```{r}
+resOrdered2.fatDiet.nona <- resOrdered2[!is.na(resOrdered2$padj) & resOrdered2$log2FoldChange > 0,]
+genes_ordered <- sort(resOrdered2.fatDiet.nona$log2FoldChange, decreasing = T)
+```
+
+- We now need to get the Hallmarks pathways gene sets. We will use the msigdbr package for that:
+```{r}
+hallmarks <- msigdbr(species = "Homo sapiens", category = "H") %>% 
+  dplyr::select(gs_name, gene_symbol)
+```
+
+- Use the GSEA() function from the clusterProfiler package to run the analysis.
+- You can find an awesome tutorial for the clusterProfiler package here: http://yulab-smu.top/biomedical-knowledge-mining-book/universal-api.html
+- Save your results into "hm"
+```{r}
+hm <- GSEA(genes_ordered, TERM2GENE = hallmarks)
+```
+
+- Finally, visualize the results of this analysis using the dotPlot function from the clusterProfiler database.
+```{r}
+hallmarks <- msigdbr(species = "Homo sapiens", category = "H")
+hallmarks <- hallmarks[,c('gs_name', 'gene_symbol')]
+dotplot(hm)
+```
+- Summarize your conclusions from the analysis (up to 250 words)
+- Make sure you base your conclusions on the different steps you made (PCA, clustering, DEG, GSEA) 
+```{}
+Write your answer here:
+In this research, our objective was to scrutinize the impact of a high-fat diet on the expression of specific genes within study participants. Notably, the PCA plot revealed discernible variations in gene expression across different subjects, and across the same subjects in different days, implying the emergence of distinct subclasses as a consequence of high-fat meal consumption, exerting a tangible influence on the subjects.
+Through meticulous clustering analysis, we elucidated that the primary source of variability in the dataset emanates from individual subject factors, with the temporal dimension of days constituting a secondary contributing factor. 
+The exploration of differentially expressed genes afforded insights into the identification of specific genes, where we found the most significant genes play roles in the regulation of cellular processes.
+The dot plot analysis visualizes the relationship between GeneRatio and various pathways, suggesting that the mosr active pathways are the HALMARK INFLAMATORY RESPONSE and HALMARK TNFA SIGNALING VIA NFKB (significantly), and  HALLMARK COMPLEMENT and HALLMARK HEME METABOLISM pathways (numerically).
+The first two pathways, which include gene sets related to inflammatory response, exhibit the most significant associations with gene expression, which made it evident that high-fat meals elicit adverse effects and should be approached with caution.
+
+In summation, the overarching conclusion drawn from our study posits that the consumption of high-fat meals detrimentally impacts human physiology, influencing the expression of pertinent genes. Consequently, our recommendation advocates for the adoption of a dietary regimen characterized by non-high-fat foods as a means to safeguard overall well-being.
+```
+
+- Save this HW as HTML  
+
+Eat healthy :)
