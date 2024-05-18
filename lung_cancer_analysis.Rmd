@@ -1,44 +1,81 @@
 ---
 title: "Bioinformatics Final Project"
-author: "Amit Gabay"
+authors: "Amit Gabay_Hen Israel"
 date: "2024-05-03"
 output: html_document
 ---
 
-Import and Install Packages
+Abstract
+Lung cancer remains one of the leading causes of cancer-related mortality worldwide.
+According to the majority of studies, cigarette smoking is recognized as a major risk factor for lung-cancer development. 
+Even so, despite the well-established association between smoking and lung cancer, we have found that there is still a gap in our understanding of the molecular mechanisms underlying the relationship between smoking cessation and lung cancer pathogenesis. 
+This study aimes to investigate the specific molecular alterations occurring in lung tissue following smoking cessation and their impact on the initiation, progression, and prognosis of smoking-related lung cancer. Using transcriptomic profiling techniques, we analyze gene expression patterns in lung tissue samples obtained from individuals with varying smoking histories, including current smokers, former smokers who had quit smoking, and never-smokers.
+
+
+Our analysis revealed significant differences in gene expression profiles between individuals who had quit smoking and those who continued to smoke, particularly in genes associated with cellular signaling pathways, DNA repair mechanisms, and immune response. Furthermore, we identified specific molecular signatures associated with smoking cessation that were indicative of a favorable prognosis in individuals with smoking-related lung cancer. These findings provide novel insights into the molecular mechanisms underlying the beneficial effects of smoking cessation on lung cancer pathogenesis and have important implications for personalized prevention, diagnosis, and treatment strategies. By elucidating the molecular underpinnings of smoking-related lung cancer, this study contributes to our understanding of the disease and offers potential avenues for improving clinical outcomes and reducing the burden of lung cancer on individuals and society.
+
+
+
+Install required missing packages
 ```{r}
 # install BiocManager
 if (!require("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 
 #install packages
-BiocManager::install("TCGAbiolinks")
-install.packages("tidyverse")
-BiocManager::install("DESeq2")
-BiocManager::install("AnnotationDbi")
-BiocManager::install("org.Hs.eg.db")
-BiocManager::install("EnhancedVolcano")
+packages <- c("tidyverse","hrbrthemes", "viridis", "msigdbr", "dplyr", "tibble", "hexbin") 
+biocManager_packages <- c("TCGAbiolinks","DESeq2", "GEOquery", "hrbrthemes", "apeglm", "AnnotationDbi", "org.Hs.eg.db","ReportingTools", "EnhancedVolcano", "pheatmap", "clusterProfiler", "fgsea")
 
-# import libraries
+not_installed <-packages[!(packages %in% installed.packages()[ , "Package"])]
+biocManager_not_installed <- biocManager_packages[!(biocManager_packages %in% installed.packages()[ , "Package"])]
+
+for (package in not_installed) {
+  install.packages(package) 
+}
+
+for (package in biocManager_not_installed) {
+  BiocManager::install(package) 
+}
+
+```
+
+import all packages into R
+```{r}
 library(TCGAbiolinks)
 library(tidyverse)
 library(DESeq2)
 library(AnnotationDbi)
 library(org.Hs.eg.db)
 library(EnhancedVolcano)
+library(tidyverse)
+library(GEOquery)
+library(apeglm)
+library(pheatmap)
+library(msigdbr)
+library(dplyr)
+library(tibble)
+library(clusterProfiler)
+library(ReportingTools)
+library(fgsea)
+library(hrbrthemes) # ggplot2 themes
+library(viridis) # color palettes
+library(hexbin)
 ```
+
+### Fetching Lung Cancer CPTAC-3 Project data from GDC
 
 Set working dir
 ```{r}
-setwd("C:/Users/Amit_g/OneDrive - Technion/Desktop/Bioinformatics_FP")
+setwd("C:/Users/Amit_g/OneDrive - Technion/Documents/Bioinformatics_Final_Project")
 ```
 
 - View the available TCGA cancer datasets stored in NCI's Genomic Data Commons (GDC)
 ```{r}
 cancer_projects <- getGDCprojects()
+View(cancer_projects)
 ```
 
-- Set a query to access TCGA's lung cancer transcriptome data
+- Set a query to access TCGA's lung cancer CPTAC-3 project transcriptome data
 ```{r}
 gbm.query <- GDCquery(project = "CPTAC-3", data.category = "Transcriptome Profiling")
 ```
@@ -47,6 +84,7 @@ gbm.query <- GDCquery(project = "CPTAC-3", data.category = "Transcriptome Profil
 ```{r}
 query.res <- getResults(gbm.query)
 View(query.res)
+write.csv(query.res, "query_res.csv")
 ```
 
 - The transcriptome might contain other types of data except mRNA expression
@@ -64,7 +102,7 @@ table(query.res$analysis_workflow_type)
 table(query.res$sample_type)
 ```
 
-- Fix query
+- Fix query and Remove Duplicates 
 ```{r}
 gbm.query <- GDCquery(
   project = "CPTAC-3", 
@@ -73,63 +111,363 @@ gbm.query <- GDCquery(
   workflow.type = "STAR - Counts",
   sample.type = c("Primary Tumor", "Solid Tissue Normal", "Recurrent Tumor"))
 
-# Make a copy of your original query object
+# remove dups
 gbm.query.2 <- gbm.query
-# Extract the results from the query object
 tmp <- gbm.query.2$results[[1]]
-# Remove duplicate cases
 tmp <- tmp[!duplicated(tmp$sample.submitter_id), ]
-# Update the results in the query object
 gbm.query.2$results[[1]] <- tmp
+```
+
+- Take a look at the results
+```{r}
+gbm.query.2$results[[1]]
 ```
 
 - Download the data
 ```{r}
-GDCdownload(gbm.query.2, directory = "C:/Users/Amit_g/OneDrive - Technion/Desktop/Bioinformatics_FP")
+GDCdownload(gbm.query.2, directory = "C:/Users/Amit_g/OneDrive - Technion/Documents/Bioinformatics_Final_Project")
 ```
 
 - Prepare data
 ```{r}
-gbm.data <- GDCprepare(gbm.query.2, directory = "C:/Users/Amit_g/OneDrive - Technion/Desktop/Bioinformatics_FP")
+gbm.data <- GDCprepare(gbm.query.2, directory = "C:/Users/Amit_g/OneDrive - Technion/Documents/Bioinformatics_Final_Project")
 ```
 
-- Drop NAs
+- Drop unknown and NAs and view results
 ```{r}
 #str(gbm.data)
 gbm.data.2 <- gbm.data[, !is.na(colData(gbm.data)$tobacco_smoking_status)]
 table(colData(gbm.data.2)$tobacco_smoking_status, useNA = "always")
 ```
 
+
+### Differential gene expression analysis with with DESeq2 For The lung cancer dataset
+
+- Construct a DESeq2 object
+  We want to investigate which genes are different between reformed smokers and non-smokers, between     
+  reformed smokers and current smokers, and between reformed smokers for over 15 years and reformed 
+  smokers for 15 years or less, so our factor of interest is tabaco smoking duration
+  (DESeqDataSet will turn assays into counts and set smoking status as a factor, that is why we did not
+  do it manually)
 - Perform DE analysis with DESeq2
 ```{r}
 gbm.dds <- DESeqDataSet(gbm.data.2, design = ~tobacco_smoking_status)
 gbm.dds <- DESeq(gbm.dds)
 ```
 
+- Take a look at the gene counts data (just to get an idea)
+```{r}
+counts_matrix <- counts(gbm.dds)
+View(counts_matrix)
+write.csv(counts_matrix, "counts_matrix.csv")
+```
+
+- Take a look at the metadata
+```{r}
+metadata <- colData(gbm.dds)
+View(metadata)
+```
+
+### Analyze differential gene expression results
+
+- Getting differential expression results: 
+```{r}
+res <- results(gbm.dds)
+mcols(res, use.names=T)
+
+summary(res)
+```
+
+- distribution of p-values:
+```{r}
+hist(res$pvalue[res$baseMean > 1], breaks = 0:20/20,
+     col = "grey50", border = "white")
+
+plotMA(res)
+```
+
+- For shrinking log fold-change we need to know the 'name' of the analysis we 
+  want to shrink its results.
 ```{r}
 resultsNames(gbm.dds)
 ```
 
+- Now We will filter genes based on the LFC value - Log Fold Change
+* LFC = log2 (normalized_counts_group1 / normalized_counts_group2)
+  ( Fold Change = the ratio between healthy and sick,  This tells us how many times bigger or smaller
+  something has become. For example, if a gene’s activity doubles, that’s a 2-fold change. If it becomes
+  half as active, that’s a 0.5-fold change.)
+  WE use log to make sure the result is symmetric.
+
 - Lifelong non-smoker vs.Current reformed smoker for <= 15 years
 ```{r}
-# Shrink LFC
-resLFC <- lfcShrink(gbm.dds, coef="tobacco_smoking_status_Lifelong.Non.Smoker_vs_Current.Reformed.Smoker.for...or...15.yrs", type="apeglm")
-# Add gene symbols
-resLFC$symbol <- mapIds(org.Hs.eg.db,
-                        keys=gsub("\\..*", "", rownames(resLFC)),
+# Shrink LFC 
+resLFC.1 <- lfcShrink(gbm.dds, coef="tobacco_smoking_status_Lifelong.Non.Smoker_vs_Current.Reformed.Smoker.for...or...15.yrs", type="apeglm")
+
+plotMA(resLFC.1)
+```
+
+
+Our genes are coded in ENSEMBLID, they need to be converted to conventional symbols.
+- Adding a column to the results table with the gene's symbols
+```{r}
+# Map gene symbols to the ENSEMBL gene IDs from our data
+resLFC.1$symbol <- mapIds(org.Hs.eg.db,
+                        keys=gsub("\\..*", "", rownames(resLFC.1)),
                         column="SYMBOL",
                         keytype="ENSEMBL",
-                        multiVals="first")
-# Plot volcano
-EnhancedVolcano(resLFC,
-                lab = resLFC$symbol,
+                        multiVals="first") # multiVals: what should mapIds do when there are multiple values that could be returned?
+```
+
+- Order the results by pvalue:
+```{r}
+resOrdered.1 <- resLFC.1[order(resLFC.1$pvalue),]
+resOrdered.1
+```
+
+- And finally save our results to CSV so we can take a deeper look in excel:
+```{r}
+write.csv(resOrdered.1, "signif_results_1.csv")
+```
+
+## Visualization of gene expression 1
+
+- Individual genes:
+Let start by looking at individual genes:
+```{r}
+i.1 <- which(resOrdered.1$symbol=='CTRC')
+resOrdered.1[i.1,]
+```
+
+A DESeq2 function that can let us extract the normalized values of gene CTRC:
+```{r}
+d.1 <- plotCounts(gbm.dds, gene=rownames(resOrdered.1)[i.1], intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c("Lifelong Non-Smoker", "Current Reformed Smoker for < or = 15 yrs")
+d.1 <- d.1[d.1$tobacco_smoking_status %in% selected_statuses, ]
+d.1
+ggplot(d.1[d.1$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + ggtitle("CTRC")
+```
+We can see a slight difference between the counts of those who had never smoked and the ones that
+had smoked and stopped.
+We tried boxplotting genes 1-20, but the boxplots looked quite the same in all cases for those genes, except from gene number 7ץ
+
+- Lets take a look at the 7th index
+```{r}
+resOrdered.1[7,]
+d.1 <- plotCounts(gbm.dds, gene=rownames(resOrdered.1)[7], intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c("Lifelong Non-Smoker", "Current Reformed Smoker for < or = 15 yrs")
+d.1 <- d.1[d.1$tobacco_smoking_status %in% selected_statuses, ]
+d.1
+ggplot(d.1[d.1$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + ggtitle("CEL")
+```
+- We see that the expression of the CEL gene in people who have never smoked is pretty high, while in people who have smoked and stopped it is relatively low (there is a tail of outliers who had smoked and stopped that also have a high expression of this gene, but this is due to the very high number of samples we are analyzing)
+
+- What is the CEL gene?
+Carboxyl Ester Lipase. 
+The CEL gene encodes a digestive enzyme that is primarily secreted by the pancreas. 
+This enzyme plays a crucial role in the digestion of dietary fats, cholesteryl esters, and fat-soluble vitamins.
+
+- Keep sample names for those with top and bottom quartiles of CEL for survival analysis
+```{r}
+quartiles_second.1 <- quantile(d.1[d.1$tobacco_smoking_status == "Current Reformed Smoker for < or = 15 yrs",]$count, probs = c(0.25, 0.75))
+quartiles_second.1
+low_second.1 <- rownames(d.1[d.1$tobacco_smoking_status == "Current Reformed Smoker for < or = 15 yrs" & d.1$count <= quartiles_second.1[1],])
+high_second.1 <- rownames(d.1[d.1$tobacco_smoking_status == "Current Reformed Smoker for < or = 15 yrs" & d.1$count >= quartiles_second.1[2],])
+```
+* We save the lower quartile and the upper quartile, and the samples that correspond to them, for the survival analysis later
+
+## Visualization of gene expression for multiple genes
+
+- Volcano Plot
+```{r}
+EnhancedVolcano(resLFC.1,
+                lab = resLFC.1$symbol,
                 x = 'log2FoldChange',
                 y = 'padj',
                 labSize=3,
                 FCcutoff=2)
 ```
+* P-values are naturally very small.
+We take Log to increase and plot them on the y-axis, and negate them to make them positive, 
+which will be easier to look at.
 
-- Current smoker vs. Current reformed smoker for >=15 years
+* Right Side (Positive LFC): Represents genes that are more highly expressed in Reformed Smokers compared to Lifelong Non-Smokers.
+Left Side (Negative LFC): Represents genes that are less expressed in Reformed Smokers compared to Lifelong Non-Smokers.
+
+-We are interested in genes that are the most significant (that is, as high as possible on the y-axis), and that have the greatest Fold Change (that is, as far to the left or right as possible).
+LFC cutoff is 2, so everything that is to the right of 2 or to the left of -2 is colored differently.
+P-value cutoff is 0.01, so everything above it is also colored differently
+
+- We would like to continue and look at the results from some other angles
+- We can also visualize multiple genes with a heatmap:
+```{r}
+# Take top 10 genes with the lowest p-value that are unregulated in Reformed Smokers (log2FoldChange > 0)
+selectUp <- resOrdered.1$symbol[resOrdered.1$log2FoldChange > 0][1:10]
+# Take top 10 genes with the lowest p-value that are unregulated in Lifelong Non-Smokers (log2FoldChange < 0)
+selectDown <- resOrdered.1$symbol[resOrdered.1$log2FoldChange < 0][1:10]
+select <- c(selectUp, selectDown)
+
+dds <- gbm.dds
+
+# Map ENSEMBL IDs to gene symbols
+gene_symbols <- mapIds(org.Hs.eg.db,
+                       keys = gsub("\\..*", "", rownames(dds)),
+                       column = "SYMBOL",
+                       keytype = "ENSEMBL")
+
+# Check for missing mappings and adjust if necessary
+missing_mappings <- is.na(gene_symbols)
+if (any(missing_mappings)) {
+  warning(paste(sum(missing_mappings), "ENSEMBL IDs were not mapped to gene symbols."))
+  gene_symbols[missing_mappings] <- rownames(dds)[missing_mappings]
+}
+
+# Assign the gene symbols to the row names
+rownames(dds) <- gene_symbols
+
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Lifelong Non-Smoker", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(dds)$tobacco_smoking_status %in% desired_status
+dds_subset <- dds[, subset_samples]
+
+# Update the annotation data frame
+df <- data.frame(row.names = colnames(dds_subset),
+                 status = colData(dds_subset)$tobacco_smoking_status,
+                 gender = colData(dds_subset)$gender,
+                 race = colData(dds_subset)$race)
+
+# Ensure selected genes are in the subset
+select <- select[select %in% rownames(dds_subset)]
+
+# Get normalized counts
+normcounts <- assay(vst(dds_subset, blind = TRUE))
+
+# Plot heatmap
+pheatmap(normcounts[select, ],
+         cluster_rows = TRUE,
+         show_colnames = FALSE,
+         cluster_cols = TRUE,
+         annotation_col = df,
+         scale = 'row',
+         cutree_cols = 2,
+         cutree_rows = 2)
+```
+We have a lot of samples so it is a bit hard to see the clusters, but there are some!
+-Let us zoom in: we will cluster the samples based on similarity in gene expression profiles. This will group similar samples together and make it easier to identify patterns.
+```{r}
+# Perform sample clustering
+sample_dist <- dist(t(normcounts))
+sample_clusters <- hclust(sample_dist)
+sample_order <- sample_clusters$order
+```
+
+```{r}
+# Select a subset of samples for visualization
+num_samples_to_display <- 22
+subset_samples <- sample_order[1:num_samples_to_display]
+
+# Plot the heatmap with sample clustering and subsetting
+pheatmap(normcounts[select, subset_samples],
+         cluster_rows=TRUE,
+         show_colnames = FALSE, 
+         cluster_cols=TRUE, 
+         annotation_col=df, 
+         scale = 'row', 
+         cutree_cols = 2, 
+         cutree_rows = 2)
+
+```
+We can see that there are a lot more Non-smokers then Reformed smokers in the samples.
+Remember that DESeq2() internally does library normalization to correct technical bias in 
+the data, both regarding sample sizes and sample composition, but in our samples there are too many Lifelong Non-smokers - 937, as opposed to 20 Reformed Smokers.
+Lastly, let us try Sample Subsetting: we will randomly sample 9 samples from each 
+tobacco smoking status group.
+```{r}
+set.seed(123)  # for reproducibility
+status_samples <- split(colnames(dds_subset), colData(dds_subset)$tobacco_smoking_status)
+sampled_status <- lapply(status_samples, function(x) sample(x, min(length(x), 9)))
+sampled_status <- unlist(sampled_status)
+dds_sampled <- dds_subset[, sampled_status]
+
+# Update the annotation data frame
+df_subset <- data.frame(row.names = colnames(dds_sampled),
+                 status = colData(dds_sampled)$tobacco_smoking_status,
+                 gender = colData(dds_sampled)$gender,
+                 race = colData(dds_sampled)$race)
+
+# Ensure selected genes are in the subset
+select_subset <- select[select %in% rownames(dds_sampled)]
+
+# Get normalized counts
+normcounts_subset <- assay(vst(dds_sampled, blind = TRUE))
+
+# Plot heatmap
+pheatmap(normcounts_subset[select_subset, ],
+         cluster_rows = TRUE,
+         show_colnames = FALSE,
+         cluster_cols = TRUE,
+         annotation_col = df_subset,
+         scale = 'row',
+         cutree_cols = 2,
+         cutree_rows = 2)
+
+```
+It seems that the status does not segment the data in this case.
+
+- To visualized relations between samples we can use PCA
+* simplify our complex datasets by reducing their dimensionality while retaining most of the 
+variation present in the dataset
+First, lets find 1000 most variable genes:
+```{r}
+pca_dds <- dds
+pca_dds.symbol <- pca_dds
+
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Lifelong Non-Smoker", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(pca_dds.symbol)$tobacco_smoking_status %in% desired_status
+pca_dds.symbol <- pca_dds.symbol[, subset_samples]
+
+# Normalize the counts
+normcounts = assay(vst(pca_dds.symbol, blind=TRUE))
+
+# Calculate the variance per gene and select the top 1000 variable genes
+var_per_gene <- apply(normcounts, 1, var)
+selectedGenes <- names(var_per_gene[order(var_per_gene, decreasing = TRUE)][1:1000])
+normcounts.top1Kvar <- t(normcounts[selectedGenes, ])
+```
+
+Run and plot PCA by disease state:
+```{r}
+# Perform PCA
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$tobacco_smoking_status, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Tobacco Smoking Status") +
+  theme_minimal()
+```
+- plot using hexbin for visualizing the density of points in regions where data points are densely packed and overlapping
+```{r}
+# Create a data frame for plotting
+df_hex <- as.data.frame(pcaResults$x)
+df$tobacco_smoking_status <- colData(pca_dds.symbol)$tobacco_smoking_status
+
+# Plot PCA results using hexbin
+ggplot(df_hex, aes(x=PC1, y=PC2)) +
+  geom_hex(bins=30) +
+  scale_fill_gradient(low="lightblue", high="red") +
+  labs(x="PC-1", y="PC-2") +
+  theme_minimal()
+
+```
+
+### Next We will perform a similar analysis for Current Smokers vs. Reformed Smoker
+
+- Current smoker vs. Current reformed smoker for <= 15 years
 ```{r}
 resLFC.2 <- lfcShrink(gbm.dds, coef="tobacco_smoking_status_Current.Smoker_vs_Current.Reformed.Smoker.for...or...15.yrs", type="apeglm")
 resLFC.2$symbol <- mapIds(org.Hs.eg.db,
@@ -137,6 +475,84 @@ resLFC.2$symbol <- mapIds(org.Hs.eg.db,
                         column="SYMBOL",
                         keytype="ENSEMBL",
                         multiVals="first") 
+```
+
+- Order the results by pvalue:
+```{r}
+resOrdered.2 <- resLFC.2[order(resLFC.2$pvalue),]
+resOrdered.2
+```
+## Visualization of gene expression - Example for a specific significant gene
+
+We will use the PMP2 gene as our example for this case
+```{r}
+i.2 <- which(resOrdered.2$symbol=='PMP2')
+resOrdered.2[i.2,]
+```
+
+- Lets take a look at the first gene (PMP2 - ENSG00000147588.7)
+- Extract the normalized values of the gene of PMP2:
+```{r}
+d.2 <- plotCounts(gbm.dds, gene=rownames(resOrdered.2)[i.2], intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c("Current Smoker", "Current Reformed Smoker for < or = 15 yrs")
+d.2 <- d.2[d.2$tobacco_smoking_status %in% selected_statuses, ]
+d.2
+``` 
+```{r}
+ggplot(d.2[d.2$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + ggtitle("PMP2")
+``` 
+Lets try CPB1:
+```{r}
+d.2 <- plotCounts(gbm.dds, gene=rownames(resOrdered.2)[3], intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c("Current Smoker", "Current Reformed Smoker for < or = 15 yrs")
+d.2 <- d.2[d.2$tobacco_smoking_status %in% selected_statuses, ]
+d.2
+ggplot(d.2[d.2$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + ggtitle("CPB1")
+``` 
+There is not much of a difference.
+
+- Plotting a box plot with ggplot2 (for visual difference)
+```{r}
+d.2 <- plotCounts(gbm.dds, gene=rownames(resOrdered.2)[1], intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c("Current Smoker", "Current Reformed Smoker for < or = 15 yrs")
+d.2 <- d.2[d.2$tobacco_smoking_status %in% selected_statuses, ]
+boxplot(count ~ tobacco_smoking_status , data=d.2)
+```
+
+plot using ggplot2
+```{r}
+ggplot(d.2, aes(x=tobacco_smoking_status, y=count,fill=tobacco_smoking_status)) +
+  geom_boxplot() +
+  scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+  geom_jitter(color="black", size=2, alpha=0.9) +
+  theme_classic() +
+  theme(
+    legend.position="none",
+    plot.title = element_text(size=11)
+  ) +
+  ggtitle("PMP2") +
+  xlab("Tabacoo Smoking Status") + ylab("Normalized counts")
+```
+
+- Keep sample names for those with top and bottom quartiles of PMP2
+```{r}
+selected_statuses <- c("Current Smoker", "Current Reformed Smoker for < or = 15 yrs")
+quartiles_combined.2 <- quantile(d.2[d.2$tobacco_smoking_status %in% selected_statuses,]$count, probs = c(0.25, 0.75))
+quartiles_combined.2
+low_combined.2<- rownames(d.2[d.2$tobacco_smoking_status %in% selected_statuses & d.2$count <= quartiles_combined.2[1],])
+high_combined.2<- rownames(d.2[d.2$tobacco_smoking_status %in% selected_statuses & d.2$count >= quartiles_combined.2[2],])
+
+```
+
+Seems like there is not much of a difference for the single genes we have tested.
+Lets check if the situation is the same for multiple genes.
+
+## Visualization of gene expression for multiple genes
+
+- Volcano Plot
+```{r}
 EnhancedVolcano(resLFC.2,
                 lab = resLFC.2$symbol,
                 x = 'log2FoldChange',
@@ -145,27 +561,421 @@ EnhancedVolcano(resLFC.2,
                 FCcutoff=2)
 ```
 
-- Sort results
+- visualize multiple genes with a heatmap:
 ```{r}
-resOrdered <- resLFC[order(resLFC$pvalue),]
-resOrdered
+dds <- gbm.dds
+rownames(dds) <- make.unique(rownames(dds))
+
+# Map ENSEMBL IDs to gene symbols
+gene_symbols <- mapIds(org.Hs.eg.db,
+                       keys = gsub("\\..*", "", rownames(dds)),
+                       column = "SYMBOL",
+                       keytype = "ENSEMBL")
+
+# Check for missing mappings and adjust if necessary
+missing_mappings <- is.na(gene_symbols)
+if (any(missing_mappings)) {
+  warning(paste(sum(missing_mappings), "ENSEMBL IDs were not mapped to gene symbols."))
+  gene_symbols[missing_mappings] <- rownames(dds)[missing_mappings]
+}
+
+# Assign the gene symbols to the row names
+rownames(dds) <- gene_symbols
+
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Current Smoker", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(dds)$tobacco_smoking_status %in% desired_status
+dds_subset <- dds[, subset_samples]
+
+# Update the annotation data frame
+annotation_df <- data.frame(row.names = colnames(dds_subset),
+                            status = colData(dds_subset)$tobacco_smoking_status,
+                            gender = colData(dds_subset)$gender,
+                            race = colData(dds_subset)$race)
+
+# Extract relevant genes for heatmap
+select_genes <- c(head(rownames(dds_subset)[resOrdered.1$log2FoldChange > 0], 10),
+                  head(rownames(dds_subset)[resOrdered.1$log2FoldChange < 0], 10))
+
+# Get normalized counts
+norm_counts <- assay(vst(dds_subset, blind = TRUE))
+
+# Plot heatmap
+pheatmap(norm_counts[select_genes, ],
+         cluster_rows = TRUE,
+         show_colnames = FALSE,
+         cluster_cols = TRUE,
+         annotation_col = annotation_df,
+         scale = 'row',
+         cutree_cols = 2,
+         cutree_rows = 2)
+
+
 ```
 
-- Look at the first gene (HAS1 - ENSG00000105509.11)
+
+### Next We will perform a similar analysis for refoemred smokers of different time durations
+
+- Current reformed smoker for <= 15 years vs. Current reformed smoker for > 15 years
 ```{r}
-d <- plotCounts(gbm.dds, gene=rownames(resOrdered)[1], intgroup="sample_type", returnData=TRUE)
-d <- d[d$sample_type != "Solid Tissue Normal",]
-ggplot(d[d$count < 200,], aes(sample_type, count)) + 
-  geom_boxplot(aes(fill=sample_type)) + ggtitle("HAS1")
+resLFC.3 <- lfcShrink(gbm.dds, coef="tobacco_smoking_status_Current.Reformed.Smoker.for...15.yrs_vs_Current.Reformed.Smoker.for...or...15.yrs" , type="apeglm")
+resLFC.3$symbol <- mapIds(org.Hs.eg.db,
+                        keys=gsub("\\..*", "", rownames(resLFC.3)),
+                        column="SYMBOL",
+                        keytype="ENSEMBL",
+                        multiVals="first") 
+```
+
+- Order the results by pvalue:
+```{r}
+resOrdered.3 <- resLFC.3[order(resLFC.3$pvalue),]
+resOrdered.3
+```
+## Visualization of gene expression - Example for a specific significant gene
+
+We will use the PRSS1 gene as our example for this case
+```{r}
+i.3 <- which(resOrdered.3$symbol=='PRSS1')
+resOrdered.3[i.3,]
+```
+
+- Lets take a look at the first gene (PRSS1 - ENSG00000204983.14)
+- Extract the normalized values of the gene of PRSS1:
+```{r}
+d.3 <- plotCounts(gbm.dds, gene=rownames(resOrdered.3)[i.3], intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c("Current Reformed Smoker for > 15 yrs", "Current Reformed Smoker for < or = 15 yrs")
+d.3 <- d.3[d.3$tobacco_smoking_status %in% selected_statuses, ]
+d.3
 ``` 
-
-- Keep sample names for those with top and bottom quartiles of HAS1
 ```{r}
-quartiles <- quantile(d[d$sample_type == "Primary Tumor",]$count, probs = c(0.25, 0.75))
-quartiles
-low <- rownames(d[d$sample_type == "Primary Tumor" & d$count <= quartiles[1],])
-high <- rownames(d[d$sample_type == "Primary Tumor" & d$count >= quartiles[2],])
+ggplot(d.3[d.3$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + ggtitle("PRSS1")
+``` 
+We cn notice a slight difference.
+
+Lets try CTRB1:
+```{r}
+d.3 <- plotCounts(gbm.dds, gene=rownames(resOrdered.3)[2], intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c("Current Reformed Smoker for > 15 yrs", "Current Reformed Smoker for < or = 15 yrs")
+d.3 <- d.3[d.3$tobacco_smoking_status %in% selected_statuses, ]
+d.3
+ggplot(d.3[d.3$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + ggtitle("CTRB1")
+``` 
+Also a slight difference
+
+- Plotting a box plot with ggplot2 (for visual difference)
+```{r}
+d.3 <- plotCounts(gbm.dds, gene=rownames(resOrdered.3)[1], intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c("Current Reformed Smoker for > 15 yrs", "Current Reformed Smoker for < or = 15 yrs")
+d.3 <- d.3[d.3$tobacco_smoking_status %in% selected_statuses, ]
+boxplot(count ~ tobacco_smoking_status , data=d.3)
 ```
+
+plot using ggplot2
+```{r}
+ggplot(d.3, aes(x=tobacco_smoking_status, y=count,fill=tobacco_smoking_status)) +
+  geom_boxplot() +
+  scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+  geom_jitter(color="black", size=2, alpha=0.9) +
+  theme_classic() +
+  theme(
+    legend.position="none",
+    plot.title = element_text(size=11)
+  ) +
+  ggtitle("PRSS1") +
+  xlab("Tabacoo Smoking Status") + ylab("Normalized counts")
+```
+
+- Keep sample names for those with top and bottom quartiles of PRSS1
+```{r}
+selected_statuses <- c("Current Reformed Smoker for > yrs", "Current Reformed Smoker for < or = 15 yrs")
+quartiles_combined.3 <- quantile(d.3[d.3$tobacco_smoking_status %in% selected_statuses,]$count, probs = c(0.25, 0.75))
+quartiles_combined.3
+low_combined.3<- rownames(d.3[d.3$tobacco_smoking_status %in% selected_statuses & d.3$count <= quartiles_combined.3[1],])
+high_combined.3<- rownames(d.3[d.3$tobacco_smoking_status %in% selected_statuses & d.3$count >= quartiles_combined.3[2],])
+
+```
+
+Lets check if the situation is the same for multiple genes.
+
+## Visualization of gene expression for multiple genes
+
+- Volcano Plot
+```{r}
+EnhancedVolcano(resLFC.3,
+                lab = resLFC.3$symbol,
+                x = 'log2FoldChange',
+                y = 'padj',
+                labSize=3,
+                FCcutoff=2)
+```
+
+- visualize multiple genes with a heatmap:
+```{r}
+dds <- gbm.dds
+rownames(dds) <- make.unique(rownames(dds))
+
+# Map ENSEMBL IDs to gene symbols
+gene_symbols <- mapIds(org.Hs.eg.db,
+                       keys = gsub("\\..*", "", rownames(dds)),
+                       column = "SYMBOL",
+                       keytype = "ENSEMBL")
+
+# Check for missing mappings and adjust if necessary
+missing_mappings <- is.na(gene_symbols)
+if (any(missing_mappings)) {
+  warning(paste(sum(missing_mappings), "ENSEMBL IDs were not mapped to gene symbols."))
+  gene_symbols[missing_mappings] <- rownames(dds)[missing_mappings]
+}
+
+# Assign the gene symbols to the row names
+rownames(dds) <- gene_symbols
+
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Current Reformed Smoker for > 15 yrs", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(dds)$tobacco_smoking_status %in% desired_status
+dds_subset <- dds[, subset_samples]
+
+# Update the annotation data frame
+annotation_df <- data.frame(row.names = colnames(dds_subset),
+                            status = colData(dds_subset)$tobacco_smoking_status,
+                            gender = colData(dds_subset)$gender,
+                            race = colData(dds_subset)$race)
+
+# Extract relevant genes for heatmap
+select_genes <- c(head(rownames(dds_subset)[resOrdered.1$log2FoldChange > 0], 10),
+                  head(rownames(dds_subset)[resOrdered.1$log2FoldChange < 0], 10))
+
+# Get normalized counts
+norm_counts <- assay(vst(dds_subset, blind = TRUE))
+
+# Plot heatmap
+pheatmap(norm_counts[select_genes, ],
+         cluster_rows = TRUE,
+         show_colnames = FALSE,
+         cluster_cols = TRUE,
+         annotation_col = annotation_df,
+         scale = 'row',
+         cutree_cols = 2,
+         cutree_rows = 2)
+
+
+```
+
+- Performing PCA
+
+```{r}
+pca_dds <- dds
+pca_dds.symbol <- pca_dds
+
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Lifelong Non-Smoker", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(pca_dds.symbol)$tobacco_smoking_status %in% desired_status
+pca_dds.symbol <- pca_dds.symbol[, subset_samples]
+
+# Normalize the counts
+normcounts = assay(vst(pca_dds.symbol, blind=TRUE))
+
+# Calculate the variance per gene and select the top 1000 variable genes
+var_per_gene <- apply(normcounts, 1, var)
+selectedGenes <- names(var_per_gene[order(var_per_gene, decreasing = TRUE)][1:1000])
+normcounts.top1Kvar <- t(normcounts[selectedGenes, ])
+
+# Perform PCA
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], col=colData(pca_dds.symbol)$tobacco_smoking_status, size=I(4)) +
+  labs(x="PC-1", y="PC-2") +
+  theme_minimal()
+```
+
+```{r}
+pca_dds <- dds
+pca_dds.symbol <- pca_dds
+
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Current Smoker", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(pca_dds.symbol)$tobacco_smoking_status %in% desired_status
+pca_dds.symbol <- pca_dds.symbol[, subset_samples]
+
+# Normalize the counts
+normcounts = assay(vst(pca_dds.symbol, blind=TRUE))
+
+# Calculate the variance per gene and select the top 1000 variable genes
+var_per_gene <- apply(normcounts, 1, var)
+selectedGenes <- names(var_per_gene[order(var_per_gene, decreasing = TRUE)][1:1000])
+normcounts.top1Kvar <- t(normcounts[selectedGenes, ])
+
+# Perform PCA
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], col=colData(pca_dds.symbol)$tobacco_smoking_status, size=I(4)) +
+  labs(x="PC-1", y="PC-2") +
+  theme_minimal()
+```
+```{r}
+pca_dds <- dds
+pca_dds.symbol <- pca_dds
+
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Current Reformed Smoker for > 15 yrs", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(pca_dds.symbol)$tobacco_smoking_status %in% desired_status
+pca_dds.symbol <- pca_dds.symbol[, subset_samples]
+
+# Normalize the counts
+normcounts = assay(vst(pca_dds.symbol, blind=TRUE))
+
+# Calculate the variance per gene and select the top 1000 variable genes
+var_per_gene <- apply(normcounts, 1, var)
+selectedGenes <- names(var_per_gene[order(var_per_gene, decreasing = TRUE)][1:1000])
+normcounts.top1Kvar <- t(normcounts[selectedGenes, ])
+
+# Perform PCA
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], col=colData(pca_dds.symbol)$tobacco_smoking_status, size=I(4)) +
+  labs(x="PC-1", y="PC-2") +
+  theme_minimal()
+```
+```{r}
+pca_dds <- dds
+pca_dds.symbol <- pca_dds
+
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Current Reformed Smoker for > 15 yrs", "Current Reformed Smoker for < or = 15 yrs", "Lifelong Non-Smoker", "Current Smoker")
+subset_samples <- colData(pca_dds.symbol)$tobacco_smoking_status %in% desired_status
+pca_dds.symbol <- pca_dds.symbol[, subset_samples]
+
+# Normalize the counts
+normcounts = assay(vst(pca_dds.symbol, blind=TRUE))
+
+# Calculate the variance per gene and select the top 1000 variable genes
+var_per_gene <- apply(normcounts, 1, var)
+selectedGenes <- names(var_per_gene[order(var_per_gene, decreasing = TRUE)][1:1000])
+normcounts.top1Kvar <- t(normcounts[selectedGenes, ])
+
+# Perform PCA
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], col=colData(pca_dds.symbol)$tobacco_smoking_status, size=I(4)) +
+  labs(x="PC-1", y="PC-2") +
+  theme_minimal()
+```
+### GSEA
+We'll use functional enrichment analysis with the Hallmark pathways gene sets.
+
+- First we need to intersect the significant genes from all 3 cases to retrieve more reliable DEGs
+
+```{r}
+# Filter out non-significant genes from first case
+filter.sgn.genes.1 <- resOrdered.1
+filter.sgn.genes.1.nona <- filter.sgn.genes.1[!is.na(filter.sgn.genes.1$padj),]
+filter.sgn.genes.1.nona <- filter.sgn.genes.1.nona[filter.sgn.genes.1.nona$padj < 0.05, ]
+filter.sgn.genes.1.nona
+
+# Filter out non-significant genes from second sace
+filter.sgn.genes.2 <- resOrdered.2
+filter.sgn.genes.2.nona <- filter.sgn.genes.2[!is.na(filter.sgn.genes.2$padj),]
+filter.sgn.genes.2.nona <- filter.sgn.genes.2.nona[filter.sgn.genes.2.nona$padj < 0.05, ]
+filter.sgn.genes.2.nona
+
+# Filter out non-significant genes from second sace
+filter.sgn.genes.3 <- resOrdered.3
+filter.sgn.genes.3.nona <- filter.sgn.genes.3[!is.na(filter.sgn.genes.3$padj),]
+filter.sgn.genes.3.nona <- filter.sgn.genes.3.nona[filter.sgn.genes.3.nona$padj < 0.05, ]
+filter.sgn.genes.3.nona
+
+# Intersect
+filter.intersect <- filter.sgn.genes.1.nona[filter.sgn.genes.1.nona$symbol %in% filter.sgn.genes.2.nona$symbol ,]
+filter.intersect <- filter.intersect[filter.intersect$symbol %in% filter.sgn.genes.3.nona$symbol ,]
+filter.intersect
+```
+
+- Next we need to create an ordered vector by the log fold change with the gene 
+  symbols as names:
+```{r}
+
+# Convert DESeqResults object to a data frame
+filter.intersect_df <- as.data.frame(filter.intersect)
+
+# Remove rows with NA in the symbol column
+filtered_data <- filter.intersect_df %>%
+  filter(!is.na(symbol))
+
+# Average log2FoldChange for duplicate gene symbols
+unique_genes <- filtered_data %>%
+  group_by(symbol) %>%
+  summarize(log2FoldChange = mean(log2FoldChange, na.rm = TRUE)) %>%
+  ungroup()
+
+# Order the unique genes by log2FoldChange in descending order
+unique_genes_ordered <- unique_genes %>%
+  arrange(desc(log2FoldChange))
+
+# Create a named vector with log2FoldChange values and gene symbols as names
+genes_ordered <- setNames(unique_genes_ordered$log2FoldChange, unique_genes_ordered$symbol)
+
+genes_ordered
+```
+
+- For the hallmarks pathways gene sets we'll use msigdbr package.
+```{r}
+# Load hallmark gene sets
+hallmarks <- msigdbr(species = "Homo sapiens", category = "H")
+hallmarks_list <- split(hallmarks$gene_symbol, hallmarks$gs_name)
+```
+
+- Using GSEA() as done in class
+```{r}
+# Run GSEA
+set.seed(123)  # Set seed for reproducibility
+gsea_results <- fgsea(pathways = hallmarks_list, 
+                      stats = genes_ordered, 
+                      minSize = 15, 
+                      maxSize = 500, 
+                      nperm = 1000)
+
+# Convert results to a data frame
+gsea_results_df <- as.data.frame(gsea_results)
+
+# Filter significant results (e.g., padj < 0.05)
+significant_results <- gsea_results_df %>% filter(padj < 0.05)
+
+```
+- Visualizing the results
+```{r}
+# Create a dot plot of significant pathways
+ggplot(significant_results, aes(x = reorder(pathway, NES), y = NES)) +
+  geom_point(aes(size = -log10(padj), color = NES)) +
+  coord_flip() +
+  labs(x = "Pathway", y = "Normalized Enrichment Score (NES)", 
+       title = "GSEA Results", size = "-log10(padj)", color = "NES") +
+  theme_minimal()
+
+```
+
+```{r}
+length(genes_ordered)
+```
+
+Unlike HW2, we got here just one Hallmark.
+As we interpret the GSEA results, we understand that we might have diverged
+from the experiment which was made in the article (due to several optional reasons
+such as different pre-processing decisions / aggregating methods / different 
+computation of COMMON DEGs or computation of DEGs for COVID/HIV albeit using the 
+same tools)
+
+Nonetheless, the sole hallmark we received fits the findings of the article,
+as we got E2F Targets hallmark which plays a crucial role in the control of cell 
+cycle progression, DNA replication, and cell proliferation. 
+
+In addition, though this kind of result might indicate on a troublesome analysis
+it's not uncommon to get one hallmark for not a very big number of genes (908).
 
 ## Survival Analysis
 
