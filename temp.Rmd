@@ -1765,8 +1765,10 @@ it's not uncommon to get one hallmark for 4774 genes.
 ## Survival Analysis
 
 - Download TCGA-GBM's clinical data 
+- Download CPTAC-3's clinical data 
 ```{r}
 gbm.clin <- GDCquery_clinic("TCGA-GBM", "clinical")
+gbm.clin <- GDCquery_clinic("CPTAC-3", "clinical")
 View(gbm.clin)
 ```
 
