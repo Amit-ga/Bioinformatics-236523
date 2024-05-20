@@ -282,10 +282,10 @@ resOrdered.1
 write.csv(resOrdered.1, "signif_results_1.csv")
 ```
 
-## Visualization of gene expression 1
+### Visualization of gene expression 1
 
 - Individual genes:
-Let start by looking at individual genes:
+Let start by looking at the first gene - LINC01206:
 ```{r}
 i.1 <- which(resOrdered.1$symbol=='LINC01206')
 resOrdered.1[i.1,]
@@ -298,6 +298,7 @@ selected_statuses <- c("Lifelong Non-Smoker", "Current Reformed Smoker for < or 
 d.1 <- d.1[d.1$tobacco_smoking_status %in% selected_statuses, ]
 d.1
 ```
+- boxplot for the LINC01206 gene
 ```{r}
 ggplot(d.1[d.1$count < 200,], aes(tobacco_smoking_status, count)) + 
   geom_boxplot(aes(fill=tobacco_smoking_status)) + 
@@ -344,12 +345,15 @@ ggplot(d.1[d.1$count < 200,], aes(tobacco_smoking_status, count)) +
 ```
 
 - We see that the expression of the GPR15 gene in people who had smoked and stopped is pretty high, while in people who have never smoked it is relatively low (there is a tail of outliers who had never smoked that also have a high expression of this gene, but, as we did in class, we disregard them).
+So GPR15 is upregulated in individuals who have quit smoking.
 
 - What is the GPR15 gene?
  G Protein-Coupled Receptor 15: It is a member of the G protein-coupled receptor (GPCR) family. 
  GPCRs are involved in transmitting signals from outside the cell to the inside, initiating various cellular
- responses. GPR15 specifically has been implicated in immune system functions, including the regulation of immune
+ responses. GPR15 has been implicated in immune system functions, including the regulation of immune
  cell trafficking and inflammation.
+ 
+The higher expression in reformed smokers might reflect an effect of smoking on gene expression, even after cessation, making GPR15 a potential biomarker for the effects of smoking cessation on lung tissue!
 
 - Keep sample names for those with top and bottom quartiles of CEL for survival analysis
 ```{r}
@@ -360,7 +364,7 @@ high.1 <- rownames(d.1[d.1$tobacco_smoking_status == "Lifelong Non-Smoker" & d.1
 ```
 * We save the lower quartile and the upper quartile, and the samples that correspond to them, for the survival analysis later
 
-## Visualization of gene expression for multiple genes
+### Visualization of gene expression for multiple genes
 
 - Volcano Plot
 ```{r}
@@ -396,11 +400,28 @@ resLFC_df.1 <- as.data.frame(resLFC.1)
 significant_genes.1 <- resLFC_df.1 %>%
   filter(padj < pvalue_threshold & abs(log2FoldChange) > log2fc_threshold)
 ```
+
 View and save significant genes for farther analysis and deeper look:
 ```{r}
 significant_genes.1
 write.csv(significant_genes.1, "significant_genes_1.csv")
 ```
+### Observations from Significant Genes in Case 1:
+
+Key significant Genes and Their Potential Roles:
+1. CASR (Calcium-Sensing Receptor): Upregulated in Reformed Smokers - involved in calcium homeostasis and cellular signaling. Its upregulation might indicate a role in cellular repair processes and homeostatic regulation post smoking cessation.
+2. CACNG5 (Calcium Voltage-Gated Channel Auxiliary Subunit Gamma 5: Downregulated in Reformed Smokers - essential for calcium ion transport. Downregulation suggests alterations in cellular signaling and reduced calcium influx in reformed smokers.
+3.ALB (Albumin):Upregulated in Reformed Smokers - a major plasma protein involved in transport and tissue repair. Its upregulation indicates active repair processes and restoration of lung tissue integrity.
+4. PIWIL3 (Piwi-Like RNA-Mediated Gene Silencing 3): Upregulated in Reformed Smokers - PIWIL3 is involved in gene silencing and regulation of gene expression. Its upregulation might be part of the regulatory mechanisms resetting gene expression to a non-smoking state.
+
+Conclusion: 
+(1) Upregulation of genes like ALB, CASR, and PIWIL3 in reformed smokers suggests active tissue repair, homeostasis
+    restoration, and gene regulation normalization processes.
+(2) Downregulation of genes like CHGB and CACNG5 indicates a reduction in cellular stress response and inflammatory
+    processes, suggesting improved lung tissue health post cessation.
+(3) Changes in genes involved in cellular signaling and communication (e.g., CCDC26, CACNG5) highlight alterations
+    in how cells communicate and respond to their environment post cessation.
+    
 
 - We would like to continue and look at the results from some other angles
 - We can also visualize multiple genes with a heatmap:
@@ -458,6 +479,7 @@ pheatmap(normcounts[select, ],
 ```
 
 We have a lot of samples so it is a bit hard to see the clusters.
+
 -Let us zoom in: we will cluster the samples based on similarity in gene expression profiles. This will group similar samples together and make it easier to identify patterns.
 ```{r}
 # Perform sample clustering
@@ -482,9 +504,27 @@ pheatmap(normcounts[select, subset_samples],
          cutree_rows = 2)
 
 ```
-It appears the status measure lacks a clear segmentation of the data in the heatmap in this case.
-We beleive this might be due to the gene expression changes due to smoking cessation being highly individual, leading to significant overlap between reformed smokers and lifelong non-smokers. This biological variability can obscure clear segmentation in the heatmap.
-Also, the effects of smoking and cessation on gene expression are likely complex, involving numerous genes and pathways. The top 10 upregulated and downregulated genes may not sufficiently represent these comprehensive changes, resulting in a heatmap that does not segment the data well.
+### Heatmap Observations for Clustered Samples in Case 1:
+
+The dendrogram on the left shows improved clustering of genes with similar expression patterns. This helps identify distinct groups of genes that are differentially expressed between lifelong non-smokers and reformed smokers.
+We can see that certain genes, such as CASR, PIWIL3, and ALB, show distinct expression patterns between the two groups, which is consistent with the observations from the volcano plot.
+(1) Genes like ALB (albumin), PIWIL3 (Piwi-Like RNA-Mediated Gene Silencing 3), and MT1G (metallothionein 1G) are
+    involved in tissue repair, gene regulation, and stress response.
+(2) Genes like SMPD4P1 (sphingomyelin phosphodiesterase 4, pseudogene 1) and CCDC26 (coiled-coil domain containing     26) are involved in inflammatory responses and cellular signaling. Changes in their expression reflect
+    alterations in inflammation and immune responses post smoking cessation.
+    Their differential expression suggests active tissue repair and normalization processes in reformed smokers.
+(3) Genes like CA10 (carbonic anhydrase 10) and HTR3A (5-hydroxytryptamine receptor 3A) are involved in metabolic
+    processes and neurotransmission. Their differential expression indicates changes in metabolic activity and
+    neuronal signaling in reformed smokers.
+(4) FBN2 (fibrillin 2) and COL26A1 (collagen type XXVI alpha 1 chain) are involved in extracellular matrix
+    composition and structural integrity. Changes in their expression suggest alterations in tissue structure and
+    remodeling post cessation.
+
+The dendrogram at the top shows the clustering of samples based on their gene expression profiles. There is some degree of segregation between lifelong non-smokers and reformed smokers, though there is still overlap.
+
+Conclusion:
+The clustered heatmap analysis for the this case indicates active tissue repair and normalization processes in reformed smokers, as evidenced by changes in genes involved in detoxification, inflammation, stress response, and neuronal signaling. 
+The overlap in gene expression profiles between lifelong non-smokers and reformed smokers suggests a gradual transition in lung tissue health post smoking cessation.
 * Note: we have tried taking other genes, genes 10-20, genes 1-20 etc, it resulted in a similar result.
 
 - To visualized relations between samples we can use PCA
@@ -509,7 +549,7 @@ selectedGenes <- names(var_per_gene[order(var_per_gene, decreasing = TRUE)][1:10
 normcounts.top1Kvar <- t(normcounts[selectedGenes, ])
 ```
 
-Run and plot PCA by disease state:
+Run and plot PCA by smoking status:
 ```{r}
 # Perform PCA
 pcaResults = prcomp(normcounts.top1Kvar)
@@ -526,10 +566,12 @@ Another way to plot the PCA is to use an internal DESeq2 function:
 plotPCA(vst(pca_dds.symbol, blind = TRUE), intgroup = c('tobacco_smoking_status'))
 ```
 
-The PCA plot reveals three almost-distinct clusters, each containing samples from both lifelong non-smokers and reformed smokers. 
-We hypothesize that this is due to partial recovery of gene expression: For reformed smokers, it is possible that their gene expression profiles have partially recovered towards the profiles seen in lifelong non-smokers, but not completely. This partial recovery might contribute to the observed overlap in the PCA clusters.
-Shared pathways and biological processes affected by both smoking and smoking cessation might lead to similar gene expression profiles in both lifelong non-smokers and reformed smokers, contributing to the observed clustering.
-We will preforem GSEA for more in-depth analysis later on.
+The PCA plot reveals three almost-distinct clusters, even though each contains samples from both groups, the upper cluster contains mostly non-smokers and the cluster to the left contains mostly reformed smokers.
+We hypothesize that the overlap in those 2 clusters is due to large number of samples, and the overlap in the cluster to the left is due to partial recovery of gene expression - for reformed smokers, it is possible that their gene expression profiles have partially recovered towards the profiles seen in lifelong non-smokers, but not completely. This partial recovery might contribute to the observed overlap in the PCA clusters.
+If reformed smokers are healing, their gene expression profiles might gradually shift towards those of non-smokers, reflecting recovery processes. We will look for upregulation of genes and pathways involved in tissue repair, anti-inflammatory responses, and cellular homeostasis in reformed smokers as we preforem GSEA for more in-depth analysis later on.
+
+Other possible explanation is that there are other factors that have some influence on the gene expression profiles that will entirely explain the variance.
+Let us check some factors:
 
 -by disease progression or recurrence:
 ```{r}
@@ -542,7 +584,7 @@ qplot(pcaResults$x[,1], pcaResults$x[,2],
   labs(x="PC-1", y="PC-2", color="Progression Or Recurrence") +
   theme_minimal()
 ```
-We can see that the progression of the disease or its recurrence status does not segment the data well.
+We can see that the cluster at the bottom left contains mostly samples from patients that their disease has progressed or has recurred.
 
 -by vital status:
 ```{r}
@@ -588,10 +630,12 @@ qplot(pcaResults$x[,1], pcaResults$x[,2],
   theme_minimal()
 ```
 
-(1) Asians: Most Asian samples are located in the right cluster, indicating a relatively homogeneous gene expression
-    profile in response to smoking status within this group.
-(2) Black Or African Americans: Black or African American samples are distributed across two clusters, with none present in the third cluster, suggesting a more heterogeneous gene expression response to smoking status among them.
-These can be due to: ahigher degree of genetic variation within the African American population, leading to different gene expression responses, environmental and lifestyle factors, smoking behaviors and more.
+(1) Asians: Most Asian samples are located in the top and on the right clusters, indicating a relatively
+            homogeneous gene expression profile in response to smoking status within this group.
+(2) Black Or African Americans: Black or African American samples are also distributed across two clusters, with                                   none present in the third cluster, suggesting a more heterogeneous gene expression
+                               response to smoking status among them.
+
+These can be due to: a higher degree of genetic variation within the Asian/African American population, leading to different gene expression responses, environmental and lifestyle factors, smoking behaviors and more.
 
 -by gender:
 ```{r}
@@ -604,7 +648,112 @@ qplot(pcaResults$x[,1], pcaResults$x[,2],
   labs(x="PC-1", y="PC-2", color="Gender") +
   theme_minimal()
 ```
-We can see that gender does not segment the data well.
+We can see almost distinct 5 clusters!
+
+Among all the criteria examined, smoking status and gender show the most noticeable separation.
+The lack of clear separation indicates that the gene expression profiles in lung tissue are influenced by multiple factors. No single criterion fully explains the variance observed.
+
+Next, we will perform GSEA to understand the broader biological context and interactions among significant genes.
+
+### GSEA - case 1
+- Filter significant genes and remove NA from the first case
+```{r}
+filter.sgn.genes.1 <- resOrdered.1
+filter.sgn.genes.1.nona <- filter.sgn.genes.1[!is.na(filter.sgn.genes.1$padj),]
+filter.sgn.genes.1.nona <- filter.sgn.genes.1.nona[filter.sgn.genes.1.nona$padj < 0.05, ]
+filter.sgn.genes.1.nona
+```
+
+- Next we need to create an ordered vector by the log fold change with the gene 
+  symbols as names:
+```{r}
+# Convert DESeqResults object to a data frame
+filter.first_df <- as.data.frame(filter.sgn.genes.1.nona)
+
+# Remove rows with NA in the symbol column
+filtered_data_1 <- filter.first_df %>%
+  filter(!is.na(symbol))
+
+# Average log2FoldChange for duplicate gene symbols
+unique_genes <- filtered_data_1 %>%
+  group_by(symbol) %>%
+  summarize(log2FoldChange = mean(log2FoldChange, na.rm = TRUE)) %>%
+  ungroup()
+
+# Order the unique genes by log2FoldChange in descending order
+unique_genes_ordered_1 <- unique_genes %>%
+  arrange(desc(log2FoldChange))
+
+# Create a named vector with log2FoldChange values and gene symbols as names
+genes_ordered_1 <- setNames(unique_genes_ordered_1$log2FoldChange, unique_genes_ordered_1$symbol)
+
+genes_ordered_1
+```
+
+- For the hallmarks pathways gene sets we'll use msigdbr package.
+```{r}
+# Load hallmark gene sets
+hallmarks_1 <- msigdbr(species = "Homo sapiens", category = "H")
+hallmarks_list_1 <- split(hallmarks_1$gene_symbol, hallmarks_1$gs_name)
+```
+
+- view hallmark data 
+```{r}
+# Get all genes in hallmarks_list
+all_genes_in_hallmarks_1 <- unique(unlist(hallmarks_list_1))
+
+# Get gene identifiers in genes_ordered
+genes_in_ordered_1 <- names(genes_ordered_1)
+
+# Check overlap
+overlap_genes_1 <- intersect(all_genes_in_hallmarks_1, genes_in_ordered_1)
+
+# Summary of the overlap
+cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks_1), "\n")
+cat("Number of genes in genes_ordered:", length(genes_in_ordered_1), "\n")
+cat("Number of overlapping genes:", length(overlap_genes_1), "\n")
+
+```
+We received 466 overlapping genes.
+
+- Using GSEA() as done in class
+```{r}
+# Run GSEA
+set.seed(123)  # Set seed for reproducibility
+gsea_results_1 <- fgsea(pathways = hallmarks_list_1, 
+                      stats = genes_ordered_1, 
+                      minSize = 15, 
+                      maxSize = 500)
+gsea_results_1
+# Convert results to a data frame
+gsea_results_df_1 <- as.data.frame(gsea_results_1)
+# Filter significant results (e.g., padj < 0.05)
+significant_results_1 <- gsea_results_df_1 %>% filter(padj < 0.05)
+significant_results_1
+```
+We received 0 significant pathways for the first case.
+The list you provided includes pathways with their associated p-values, adjusted p-values, log2 error rates, and enrichment scores (ES). Let's interpret these results and understand what it means to have no significant pathways.
+
+### Interpretation of GSEA Results
+
+No Significant Pathways: None of the pathways have an adjusted p-value below 0.05. 
+Some pathways do have relatively low raw p-values, such as:
+(1) HALLMARK_INTERFERON_ALPHA_RESPONSE (pval = 0.035)
+(2) HALLMARK_INTERFERON_GAMMA_RESPONSE (pval = 0.041)
+(3) HALLMARK_KRAS_SIGNALING_UP** (pval = 0.053)
+
+Those three pathways, while distinct, are interconnected through their roles in immune response and oncogenesis:
+HALLMARK_INTERFERON_ALPHA_RESPONSE and HALLMARK_INTERFERON_GAMMA_RESPONSE are both involved in antiviral defense and immune activation, sharing common signaling molecules.
+HALLMARK_KRAS_SIGNALING_UP is associated with cancer progression and can interact with immune pathways through mechanisms of immune surveillance and tumor evasion.
+
+Possible reasons for lack of significant pathways may include high biological variability among the samples, which can dilute the signal, leading to non-significant results.
+
+Conclusion:
+The significant involvement of Interferon Alpha and Interferon Gamma response pathways suggests that there is an enhanced immune response in reformed smokers compared to lifelong non-smokers. This might reflect an ongoing immune process to repair and protect lung tissue from past smoking damage.
+The activation of interferon pathways could also imply that the immune system is more vigilant in reformed smokers, potentially recognizing and responding to precancerous or cancerous cells that might have developed due to past smoking.
+The interplay between immune activation and oncogenic signaling (KRAS) might reflect a dynamic state in reformed smokers where the body is trying to repair and recover from past damage while still being at risk of oncogenic transformations.
+
+Though this kind of result might indicate on a troublesome analysis, it's not uncommon to get one hallmark for such a small number of 466 genes.
 
 
 ### Next We will perform a similar analysis for Current Smokers vs. Reformed Smoker
@@ -627,21 +776,20 @@ resOrdered.2
 
 ### Visualization of gene expression 2
 
-We will use the PMP2 gene as our example for this case
+- Lets take a look at the first gene (MTND1P23 - ENSG00000225972.1)
 ```{r}
 i.2 <- which(resOrdered.2$symbol=='MTND1P23')
 resOrdered.2[i.2,]
 ```
 
-- Lets take a look at the first gene (ALB - ENSG00000163631.17)
-- Extract the normalized values of the gene of ALB:
+- Extract the normalized values of the gene of MTND1P23:
 ```{r}
 d.2 <- plotCounts(gbm.dds, gene=rownames(resOrdered.2)[i.2], intgroup="tobacco_smoking_status", returnData=TRUE)
 selected_statuses <- c("Current Smoker", "Current Reformed Smoker for < or = 15 yrs")
 d.2 <- d.2[d.2$tobacco_smoking_status %in% selected_statuses, ]
 d.2
 ``` 
-
+-boxplot for MTND1P23:
 ```{r}
 ggplot(d.2[d.2$count < 200,], aes(tobacco_smoking_status, count)) + 
   geom_boxplot(aes(fill=tobacco_smoking_status)) + 
@@ -655,22 +803,23 @@ ggplot(d.2[d.2$count < 200,], aes(tobacco_smoking_status, count)) +
         plot.title = element_text(hjust = 0.5))  # Center the plot title
 ``` 
 We can see a there is not much of a difference at all.
+
 We tried boxplotting genes 1-20, and the largest difference appeared to be on gene number 10.
 
-- Lets take a look at the gene at the 10th index
+- Lets take a look at the gene at the 16th index
 ```{r}
 resOrdered.2[16,]
 ```
 We can see the adjusted p-value for SEC1P is 2.797e-10, which is much lower than 0.05, indicating that the differential expression is statistically significant.
 
-get FBN2 data:
+- Extract the normalized values of the gene of WSCD2
 ```{r}
 d.2 <- plotCounts(gbm.dds, gene=rownames(resOrdered.2)[16], intgroup="tobacco_smoking_status", returnData=TRUE)
 selected_statuses <- c("Current Smoker", "Current Reformed Smoker for < or = 15 yrs")
 d.2 <- d.2[d.2$tobacco_smoking_status %in% selected_statuses, ]
 d.2
 ``` 
-- boxplot for the GPR15 gene 
+- boxplot for the WSCD2 gene 
 ```{r}
 ggplot(d.2[d.2$count < 200,], aes(tobacco_smoking_status, count)) + 
   geom_boxplot(aes(fill=tobacco_smoking_status)) + 
@@ -685,11 +834,13 @@ ggplot(d.2[d.2$count < 200,], aes(tobacco_smoking_status, count)) +
 ```
 
 - We can see that the expression of the WSCD2 gene in people who had smoked and stopped is pretty high, while in people who are current smokers it is relatively low (there is a tail of outliers who are current smokers that also have a high expression of this gene, but, as we did in class, we disregard them).
+The upregulation of WSCD2 in reformed smokers compared to current smokers suggests that this gene may play a role in the biological processes associated with smoking cessation. 
 
 - What is the WSCD2 gene?
-Wsc domain containing 2: IT is involved in cellular processes related to the regulation of vesicle trafficking and membrane dynamics.
+Wsc domain containing 2: WSC domain is known to be involved in cell wall maintenance and stress response.
+Upregulation of WSCD2 in reformed smokers may indicate its involvement in the response to cellular stress or damage caused by smoking. This could be part of the tissue repair and recovery process following smoking cessation.
 
-- Keep sample names for those with top and bottom quartiles of FBN2 for later
+- Keep sample names for those with top and bottom quartiles of WSCD2 for later
 ```{r}
 quartiles.2 <- quantile(d.2[d.2$tobacco_smoking_status == "Current Smoker",]$count, probs = c(0.25, 0.75))
 quartiles.2
@@ -731,6 +882,22 @@ View and save significant genes for farther analysis and deeper look:
 significant_genes.2
 write.csv(significant_genes.2, "significant_genes_2.csv")
 ```
+### Observations from Significant Genes in Case 2:
+
+Key Significant Genes and Their Potential Roles:
+1. CLCA4 (Chloride Channel Accessory 4): Downregulated in Reformed Smokers - CLCA4 has been associated with inflammatory responses and mucous production. Its downregulation might indicate reduced inflammation and normalization of mucous production in reformed smokers.
+2. GABRA1 (Gamma-Aminobutyric Acid Type A Receptor Alpha1 Subunit)- Upregulated in Reformed Smokers - GABRA1 is involved in inhibitory neurotransmission. Upregulation might indicate a shift towards normal neuronal activity post smoking cessation.
+3. CACNG5 (Calcium Voltage-Gated Channel Auxiliary Subunit Gamma 5): Downregulated in Reformed Smokers - CACNG5 is involved in calcium ion transport. Its downregulation might reflect changes in cellular signaling and ion transport mechanisms post smoking cessation.
+4. VGF (VGF Nerve Growth Factor Inducible): Upregulated in Reformed Smokers - VGF is involved in neuroplasticity and energy balance. Its upregulation might be part of the tissue repair and recovery processes.
+5. PRSS56 (Protease, Serine 56): Upregulated in Reformed Smokers - PRSS56 is involved in proteolysis. Its upregulation might reflect increased tissue remodeling and repair processes.
+
+Conclusion:
+(1) Genes involved in tissue repair, neuroplasticity, and cellular signaling are upregulated in reformed smokers,
+    suggesting active tissue recovery and normalization processes post smoking cessation.
+(2) Downregulation of genes associated with inflammation and mucous production, like CLCA4, indicates reduced
+    inflammatory responses in reformed smokers.
+(3) Changes in genes like CACNG5 indicate alterations in cellular signaling pathways, which might be part of the
+    adaptation and recovery mechanisms in reformed smokers.
 
 - visualize multiple genes with a heatmap:
 ```{r}
@@ -786,6 +953,7 @@ pheatmap(normcounts[select, ],
          cutree_rows = 2)
 ```
 We have a lot of samples so it is a bit hard to see the clusters.
+
 -Let us zoom in: we will cluster the samples based on similarity in gene expression profiles. This will group similar samples together and make it easier to identify patterns.
 ```{r}
 # Perform sample clustering
@@ -810,9 +978,29 @@ pheatmap(normcounts[select, subset_samples],
          cutree_rows = 2)
 
 ```
-It appears the status measure lacks a clear segmentation of the data in the heatmap in this case also.
-We beleive this might be due to the gene expression changes due to smoking cessation being highly individual, leading to significant overlap between reformed smokers and lifelong non-smokers. This biological variability can obscure clear segmentation in the heatmap.
-Also, the effects of smoking and cessation on gene expression are likely complex, involving numerous genes and pathways. The top 10 upregulated and downregulated genes may not sufficiently represent these comprehensive changes, resulting in a heatmap that does not segment the data well.
+The dendrogram on the left shows improved clustering of genes with similar expression patterns. This helps us identify distinct groups of genes that are differentially expressed between the two groups.
+(1) The genes MTND1P23, CALN1, USP6, and CSPG4BP are located in the top cluster, indicating their expression varies
+    between the groups.
+    Genes like USP6 (ubiquitin-specific peptidase 6) and CALN1 (calneuron 1) are involved in cellular signaling and
+    stress response. Their differential expression suggests active tissue repair and normalization processes in
+    reformed smokers.
+(2) The genes KCNJ3, SEC1P, CHRNA9, and TSPAN10 form another distinct cluster, reflecting their differential
+    expression in response to smoking status.
+    Genes like GRN (granulin) and TREM2 (triggering receptor expressed on myeloid cells 2) are involved in
+    inflammatory responses and immune regulation. Changes in their expression reflect alterations in inflammation
+    and immune responses post smoking cessation.
+    Genes like CYP1A1 (cytochrome P450 family 1 subfamily A member 1) is involved in the metabolism of xenobiotics
+    and is typically upregulated in response to smoking. Its altered expression in reformed smokers suggests
+    reduced exposure to smoking-related toxins.
+    Genes like CHRNA9 (nicotinic acetylcholine receptor subunit alpha-9) and KCNJ3 (potassium inwardly-rectifying
+    channel, subfamily J, member 3) are involved in neuronal signaling. Their differential expression indicates
+    changes in neuronal activity and signaling in reformed smokers.
+
+The dendrogram at the top shows the clustering of samples based on their gene expression profiles, there appears to be some degree of segregation between current smokers and reformed smokers, though there is still overlap.
+
+Conclusion:
+The clustered heatmap analysis for the second case indicates active tissue repair and normalization processes in reformed smokers, as evidenced by changes in genes involved in detoxification, inflammation, stress response, and neuronal signaling. 
+We beleive that the overlap in gene expression profiles between current and reformed smokers suggests a gradual transition in lung tissue health post smoking cessation.
 * Note: we have tried taking other genes, genes 10-20, genes 1-20 etc, it resulted in a similar result.
 
 - To visualized relations between samples we can use PCA
@@ -849,7 +1037,9 @@ qplot(pcaResults$x[,1], pcaResults$x[,2],
 ```
 The PCA plot reveals three almost-distinct clusters, each containing samples from both lifelong non-smokers and reformed smokers. 
 We hypothesize that this may be since reformed smokers, especially those who have quit relatively recently, may still exhibit gene expression profiles similar to current smokers. The duration of smoking cessation might not be long enough for complete normalization of gene expression to a non-smoker profile.
-This will negate our theory for the PCA results of the previous case and therefore we will also provide an alternative hypothesis - that both current and reformed smokers likely exhibit significant heterogeneity in their gene expression responses. Factors such as the extent of smoking history, individual genetic differences, and other lifestyle factors can contribute to this variability, leading to overlapping clusters.
+
+An alternative hypothesis - both current and reformed smokers likely exhibit significant heterogeneity in their gene expression responses. Factors such as the extent of smoking history, individual genetic differences, and other lifestyle factors can contribute to this variability, leading to overlapping clusters.
+Let us check other factors:
 
 -by disease progression or recurrence:
 ```{r}
@@ -916,6 +1106,132 @@ qplot(pcaResults$x[,1], pcaResults$x[,2],
 ```
 We can see that gender does not segment the data well.
 
+Among all the criteria examined, smoking status shows the most noticeable separation.
+The lack of clear separation in any single PCA plot indicates that the gene expression profiles in lung tissue are influenced by multiple factors. No single criterion fully explains the variance observed.
+Next, we will perform GSEA to understand the broader biological context and interactions among significant genes.
+
+### GSEA - case 2
+
+- Filter significant genes and remove NA from the second case
+```{r}
+filter.sgn.genes.2 <- resOrdered.2
+filter.sgn.genes.2.nona <- filter.sgn.genes.2[!is.na(filter.sgn.genes.2$padj),]
+filter.sgn.genes.2.nona <- filter.sgn.genes.2.nona[filter.sgn.genes.2.nona$padj < 0.05, ]
+filter.sgn.genes.2.nona
+```
+
+- Next we need to create an ordered vector by the log fold change with the gene 
+  symbols as names:
+```{r}
+# Convert DESeqResults object to a data frame
+filter.second_df <- as.data.frame(filter.sgn.genes.2.nona)
+
+# Remove rows with NA in the symbol column
+filtered_data_2 <- filter.second_df %>%
+  filter(!is.na(symbol))
+
+# Average log2FoldChange for duplicate gene symbols
+unique_genes_2 <- filtered_data_2 %>%
+  group_by(symbol) %>%
+  summarize(log2FoldChange = mean(log2FoldChange, na.rm = TRUE)) %>%
+  ungroup()
+
+# Order the unique genes by log2FoldChange in descending order
+unique_genes_ordered_2 <- unique_genes_2 %>%
+  arrange(desc(log2FoldChange))
+
+# Create a named vector with log2FoldChange values and gene symbols as names
+genes_ordered_2 <- setNames(unique_genes_ordered_2$log2FoldChange, unique_genes_ordered_2$symbol)
+
+genes_ordered_2
+```
+
+- For the hallmarks pathways gene sets we'll use msigdbr package.
+```{r}
+# Load hallmark gene sets
+hallmarks_2 <- msigdbr(species = "Homo sapiens", category = "H")
+hallmarks_list_2 <- split(hallmarks_2$gene_symbol, hallmarks_2$gs_name)
+```
+
+- view hallmark data 
+```{r}
+# Get all genes in hallmarks_list
+all_genes_in_hallmarks_2 <- unique(unlist(hallmarks_list_2))
+
+# Get gene identifiers in genes_ordered
+genes_in_ordered_2 <- names(genes_ordered_2)
+
+# Check overlap
+overlap_genes_2 <- intersect(all_genes_in_hallmarks_2, genes_in_ordered_2)
+
+# Summary of the overlap
+cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks_2), "\n")
+cat("Number of genes in genes_ordered:", length(genes_in_ordered_2), "\n")
+cat("Number of overlapping genes:", length(overlap_genes_2), "\n")
+
+```
+We received 403 genes.
+
+- Using GSEA() as done in class
+```{r}
+# Run GSEA
+set.seed(123)  # Set seed for reproducibility
+gsea_results_2 <- fgsea(pathways = hallmarks_list_2, 
+                      stats = genes_ordered_2, 
+                      minSize = 15, 
+                      maxSize = 500)
+gsea_results_2
+# Convert results to a data frame
+gsea_results_df_2 <- as.data.frame(gsea_results_2)
+# Filter significant results (e.g., padj < 0.05)
+significant_results_2 <- gsea_results_df_2 %>% filter(padj < 0.05)
+significant_results_2
+```
+we got 5 pathways!
+
+- Visualizing the results
+```{r}
+# Create a dot plot of significant pathways
+ggplot(significant_results_2, aes(x = reorder(pathway, NES), y = NES)) +
+  geom_point(aes(size = -log10(padj), color = NES)) +
+  coord_flip() +
+  labs(x = "Pathway", y = "Normalized Enrichment Score (NES)", 
+       title = "GSEA Results", size = "-log10(padj)", color = "NES") +
+  theme_minimal()
+
+```
+
+### Interpretation of GSEA Results of Case 2
+
+(1) HALLMARK_KRAS_SIGNALING_UP: KRAS signaling is known to be involved in cell proliferation, differentiation, and
+    survival. Mutations or upregulations in KRAS are often implicated in various cancers, including lung cancer.
+    The significant enrichment of this pathway in current smokers compared to reformed smokers suggests a higher
+    oncogenic potential in the current smokers.
+(2) HALLMARK_INTERFERON_GAMMA_RESPONSE: Interferon Gamma Response is crucial for immune activation, particularly in
+    the context of intracellular pathogens and tumor surveillance.
+    Its significant enrichment indicates an active immune response.
+(3) HALLMARK_TNFA_SIGNALING_VIA_NFKB: TNF-alpha signaling via NF-kB is a critical pathway in inflammation and
+    immune response. It can lead to the expression of genes involved in inflammation, apoptosis, and cell survival.
+    This pathway's activation suggests that current smokers have a heightened inflammatory state, which may
+    contribute to tissue damage and potentially cancer progression.
+(4) HALLMARK_P53_PATHWAY: The p53 pathway is a key regulator of cell cycle and apoptosis. It acts as a tumor
+    suppressor, preventing cancer development by inducing cell cycle arrest or apoptosis in response to DNA damage.
+    Its enrichment might suggest some level of DNA damage response in current smokers.
+(5) HALLMARK_INFLAMMATORY_RESPONSE: This pathway encompasses a broad range of genes involved in the inflammatory
+    response. The enrichment indicates that there is inflammatory activity.
+    
+Conclusion:
+(1) Higher Oncogenic Potential in Current Smokers: The significant enrichment of the KRAS signaling pathway in
+    current smokers underscores the increased oncogenic potential in this group. KRAS is a well-known oncogene, and
+    its activation suggests a higher risk of developing lung cancer.
+    Active Immune and Inflammatory Responses**:
+(2) Both the Interferon Gamma Response and TNFA Signaling via NF-kB pathways are significantly enriched in current
+    smokers. This indicates a state of chronic inflammation and active immune response, which could be due to
+    ongoing exposure to cigarette smoke and its harmful effects.
+(3) Potential Chronic Inflammation: The activation of inflammatory pathways suggests that current smokers may
+    experience chronic inflammation. This persistent inflammatory state can contribute to various pathological
+    conditions, including cancer progression.
+
 ### Next We will perform a similar analysis for refoemred smokers of different time durations
 
 - Current reformed smoker for <= 15 years vs. Current reformed smoker for > 15 years
@@ -940,7 +1256,7 @@ write.csv(resOrdered.3, "signif_results_3.csv")
 
 ## Visualization of gene expression 3
 
-We will use the ALB gene as our example for this case
+Lets take a look at the first gene - ALB - ENSG00000288671.1:
 ```{r}
 i.3 <- which(resOrdered.3$symbol=='ALB')
 resOrdered.3[i.3,]
@@ -954,6 +1270,7 @@ selected_statuses <- c("Current Reformed Smoker for > 15 yrs", "Current Reformed
 d.3 <- d.3[d.3$tobacco_smoking_status %in% selected_statuses, ]
 d.3
 ``` 
+- boxplot for the ALB gene
 ```{r}
 ggplot(d.3[d.3$count < 200,], aes(tobacco_smoking_status, count)) + 
   geom_boxplot(aes(fill=tobacco_smoking_status)) + 
@@ -966,7 +1283,12 @@ ggplot(d.3[d.3$count < 200,], aes(tobacco_smoking_status, count)) +
   theme(axis.text.x = element_text(size = 6),  # Rotate x-axis labels
         plot.title = element_text(hjust = 0.5))  # Center the plot title
 ``` 
-We can notice a slight difference.
+We can notice that the ALB gene is slightly upregulated in reformed smoker for over 15 years.
+Albumin is a major protein in the blood, playing a crucial role in maintaining osmotic pressure, transporting hormones, vitamins, and drugs, and acting as a reservoir of amino acids. Higher levels of albumin are generally associated with better liver function and overall health.
+
+Conclusion
+The slight upregulation of the ALB gene in reformed smokers for more than 15 years suggests that prolonged smoking cessation may lead to better liver function and overall health. This highlights the importance of long-term smoking cessation for sustained health benefits and strengthens our hypothesis that smoking cessation is associated with a favorable molecular profile changes in lung tissue (and the longer you dont smoke - the better).
+
 
 We tried boxplotting genes 1-20, and the largest difference appeared on gene number 19.
 
@@ -976,7 +1298,7 @@ resOrdered.3[19,]
 ```
 In our case, the adjusted p-value for ATP2A1 is 1.12452e-09, which is much lower than 0.05, indicating that the differential expression is statistically significant.
 
-- Get ATP2A1 data 
+- extract the normalized values of gene ATP2A1: 
 ```{r}
 resOrdered.3[19,]
 d.3 <- plotCounts(gbm.dds, gene=rownames(resOrdered.3)[19], intgroup="tobacco_smoking_status", returnData=TRUE)
@@ -985,7 +1307,7 @@ d.3 <- d.3[d.3$tobacco_smoking_status %in% selected_statuses, ]
 d.3
 ```
 
-- boxplot for the GPR15 gene 
+- boxplot for the ATP2A1 gene 
 ```{r}
 ggplot(d.3[d.3$count < 200,], aes(tobacco_smoking_status, count)) + 
   geom_boxplot(aes(fill=tobacco_smoking_status)) + 
@@ -1001,15 +1323,22 @@ ggplot(d.3[d.3$count < 200,], aes(tobacco_smoking_status, count)) +
 
 - We see that the expression of the ATP2A1 gene in people who had smoked and stopped for 15 years or less is pretty high, while in people who had smoked and stopped for more than 15 years is relatively low (there is a tail of outliers in both cases, but, as we did in class, we disregard them).
 
-- What is the ATP2A1 gene?
-ATP2A1 encodes a protein which is a calcium pump enzyme that plays a crucial role in maintaining calcium homeostasis within cells, particularly in muscle cells.
+ATP2A1 encodes the sarcoplasmic/endoplasmic reticulum calcium ATPase 1 (SERCA1), which is involved in calcium transport into the sarcoplasmic reticulum, a process crucial for muscle function.
+Higher expression levels of ATP2A1 might indicate better muscle function and calcium handling in the cells.
 
+Possible Explanations for Higher Expression in Recently Reformed Smokers include: an acute response to cessation- the upregulation of ATP2A1 in smokers who have been reformed for ≤ 15 years might be an acute response to the stress and changes associated with smoking cessation. This could reflect a temporary increase in muscle activity or a need for enhanced calcium transport during the initial years after quitting, or an inflammatory response - there may still be residual inflammatory or stress-related processes occurring in the body within the first 15 years of smoking cessation, leading to elevated ATP2A1 expression.
+
+In long-term reformed smokers (> 15 years), the expression levels of ATP2A1 might stabilize as the body adjusts and recovers from the effects of smoking over a more extended period. This could explain the lower, more stable expression levels seen in this group.
+
+
+Conclusion:
+The considerable overlap in expression levels indicates that while there is a trend, the difference is not highly pronounced.
 
 - Keep sample names for those with top and bottom quartiles of ATP2A1 for later
 ```{r}
 quartiles.3 <- quantile(d.3[d.3$tobacco_smoking_status == "Current Reformed Smoker for > 15 yrs",]$count, probs = c(0.25, 0.75))
 quartiles.3
-low.3 <- rownames(d.3[d.3$tobacco_smoking_status == "Current Reformed Smoker for > 15 yrs" & d.3$count <= quartiles.1[1],])
+low.3 <- rownames(d.3[d.3$tobacco_smoking_status == "Current Reformed Smoker for > 15 yrs" & d.3$count <= quartiles.3[1],])
 high.3 <- rownames(d.3[d.3$tobacco_smoking_status == "Current Reformed Smoker for > 15 yrs" & d.3$count >= quartiles.3[2],])
 
 ```
@@ -1319,7 +1648,6 @@ We'll use functional enrichment analysis with the Hallmark pathways gene sets.
 - First we need to create an ordered vector by the log fold change with the gene 
   symbols as names:
 ```{r}
-
 # Convert DESeqResults object to a data frame
 filter.intersect_df <- as.data.frame(filter.intersect)
 
@@ -1353,6 +1681,16 @@ hallmarks_list <- split(hallmarks$gene_symbol, hallmarks$gs_name)
 - view hallmarks data 
 ```{r}
 # Summary of the overlap
+# Get all genes in hallmarks_list
+all_genes_in_hallmarks <- unique(unlist(hallmarks_list))
+
+# Get gene identifiers in genes_ordered
+genes_in_ordered <- names(genes_ordered_)
+
+# Check overlap
+overlap_genes <- intersect(all_genes_in_hallmarks, genes_in_ordered)
+
+# Summary of the overlap
 cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks), "\n")
 cat("Number of genes in genes_ordered:", length(genes_in_ordered), "\n")
 cat("Number of overlapping genes:", length(overlap_genes), "\n")
@@ -1382,172 +1720,6 @@ We received zero combined hallmarks.
 
 Let us run GSEA for every case:
 
-- Filter significant genes and remove NA from the first case
-```{r}
-filter.sgn.genes.1 <- resOrdered.1
-filter.sgn.genes.1.nona <- filter.sgn.genes.1[!is.na(filter.sgn.genes.1$padj),]
-filter.sgn.genes.1.nona <- filter.sgn.genes.1.nona[filter.sgn.genes.1.nona$padj < 0.05, ]
-filter.sgn.genes.1.nona
-```
-
-- Next we need to create an ordered vector by the log fold change with the gene 
-  symbols as names:
-```{r}
-# Convert DESeqResults object to a data frame
-filter.first_df <- as.data.frame(filter.sgn.genes.1.nona)
-
-# Remove rows with NA in the symbol column
-filtered_data_1 <- filter.first_df %>%
-  filter(!is.na(symbol))
-
-# Average log2FoldChange for duplicate gene symbols
-unique_genes <- filtered_data_1 %>%
-  group_by(symbol) %>%
-  summarize(log2FoldChange = mean(log2FoldChange, na.rm = TRUE)) %>%
-  ungroup()
-
-# Order the unique genes by log2FoldChange in descending order
-unique_genes_ordered_1 <- unique_genes %>%
-  arrange(desc(log2FoldChange))
-
-# Create a named vector with log2FoldChange values and gene symbols as names
-genes_ordered_1 <- setNames(unique_genes_ordered_1$log2FoldChange, unique_genes_ordered_1$symbol)
-
-genes_ordered_1
-```
-
-- For the hallmarks pathways gene sets we'll use msigdbr package.
-```{r}
-# Load hallmark gene sets
-hallmarks_1 <- msigdbr(species = "Homo sapiens", category = "H")
-hallmarks_list_1 <- split(hallmarks_1$gene_symbol, hallmarks_1$gs_name)
-```
-
-- view hallmark data 
-```{r}
-# Get all genes in hallmarks_list
-all_genes_in_hallmarks_1 <- unique(unlist(hallmarks_list_1))
-
-# Get gene identifiers in genes_ordered
-genes_in_ordered_1 <- names(genes_ordered_1)
-
-# Check overlap
-overlap_genes_1 <- intersect(all_genes_in_hallmarks_1, genes_in_ordered_1)
-
-# Summary of the overlap
-cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks_1), "\n")
-cat("Number of genes in genes_ordered:", length(genes_in_ordered_1), "\n")
-cat("Number of overlapping genes:", length(overlap_genes_1), "\n")
-
-```
-We received 466 overlapping genes.
-
-- Using GSEA() as done in class
-```{r}
-# Run GSEA
-set.seed(123)  # Set seed for reproducibility
-gsea_results_1 <- fgsea(pathways = hallmarks_list_1, 
-                      stats = genes_ordered_1, 
-                      minSize = 15, 
-                      maxSize = 500)
-gsea_results_1
-# Convert results to a data frame
-gsea_results_df_1 <- as.data.frame(gsea_results_1)
-# Filter significant results (e.g., padj < 0.05)
-significant_results_1 <- gsea_results_df_1 %>% filter(padj < 0.05)
-significant_results_1
-```
-We received 0 pathways for the first case.
-
-- Filter significant genes and remove NA from the second case
-```{r}
-filter.sgn.genes.2 <- resOrdered.2
-filter.sgn.genes.2.nona <- filter.sgn.genes.2[!is.na(filter.sgn.genes.2$padj),]
-filter.sgn.genes.2.nona <- filter.sgn.genes.2.nona[filter.sgn.genes.2.nona$padj < 0.05, ]
-filter.sgn.genes.2.nona
-```
-
-- Next we need to create an ordered vector by the log fold change with the gene 
-  symbols as names:
-```{r}
-
-# Convert DESeqResults object to a data frame
-filter.second_df <- as.data.frame(filter.sgn.genes.2.nona)
-
-# Remove rows with NA in the symbol column
-filtered_data_2 <- filter.second_df %>%
-  filter(!is.na(symbol))
-
-# Average log2FoldChange for duplicate gene symbols
-unique_genes_2 <- filtered_data_2 %>%
-  group_by(symbol) %>%
-  summarize(log2FoldChange = mean(log2FoldChange, na.rm = TRUE)) %>%
-  ungroup()
-
-# Order the unique genes by log2FoldChange in descending order
-unique_genes_ordered_2 <- unique_genes_2 %>%
-  arrange(desc(log2FoldChange))
-
-# Create a named vector with log2FoldChange values and gene symbols as names
-genes_ordered_2 <- setNames(unique_genes_ordered_2$log2FoldChange, unique_genes_ordered_2$symbol)
-
-genes_ordered_2
-```
-
-- For the hallmarks pathways gene sets we'll use msigdbr package.
-```{r}
-# Load hallmark gene sets
-hallmarks_2 <- msigdbr(species = "Homo sapiens", category = "H")
-hallmarks_list_2 <- split(hallmarks_2$gene_symbol, hallmarks_2$gs_name)
-```
-
-- view hallmark data 
-```{r}
-# Get all genes in hallmarks_list
-all_genes_in_hallmarks_2 <- unique(unlist(hallmarks_list_2))
-
-# Get gene identifiers in genes_ordered
-genes_in_ordered_2 <- names(genes_ordered_2)
-
-# Check overlap
-overlap_genes_2 <- intersect(all_genes_in_hallmarks_2, genes_in_ordered_2)
-
-# Summary of the overlap
-cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks_2), "\n")
-cat("Number of genes in genes_ordered:", length(genes_in_ordered_2), "\n")
-cat("Number of overlapping genes:", length(overlap_genes_2), "\n")
-
-```
-We received 403 genes.
-
-- Using GSEA() as done in class
-```{r}
-# Run GSEA
-set.seed(123)  # Set seed for reproducibility
-gsea_results_2 <- fgsea(pathways = hallmarks_list_2, 
-                      stats = genes_ordered_2, 
-                      minSize = 15, 
-                      maxSize = 500)
-gsea_results_2
-# Convert results to a data frame
-gsea_results_df_2 <- as.data.frame(gsea_results_2)
-# Filter significant results (e.g., padj < 0.05)
-significant_results_2 <- gsea_results_df_2 %>% filter(padj < 0.05)
-significant_results_2
-```
-we got 5 pathways!
-
-- Visualizing the results
-```{r}
-# Create a dot plot of significant pathways
-ggplot(significant_results_2, aes(x = reorder(pathway, NES), y = NES)) +
-  geom_point(aes(size = -log10(padj), color = NES)) +
-  coord_flip() +
-  labs(x = "Pathway", y = "Normalized Enrichment Score (NES)", 
-       title = "GSEA Results", size = "-log10(padj)", color = "NES") +
-  theme_minimal()
-
-```
 
 - Filter significant genes and removes NAs from third case
 ```{r}
