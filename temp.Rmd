@@ -23,7 +23,7 @@ if (!require("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 
 #install packages
-packages <- c("tidyverse","hrbrthemes", "viridis", "msigdbr", "dplyr", "tibble", "hexbin") 
+packages <- c("tidyverse","hrbrthemes", "viridis", "msigdbr", "dplyr", "tibble", "venn", "grid") 
 biocManager_packages <- c("TCGAbiolinks","DESeq2", "GEOquery", "hrbrthemes", "apeglm", "AnnotationDbi", "org.Hs.eg.db","ReportingTools", "EnhancedVolcano", "pheatmap", "clusterProfiler", "fgsea")
 
 not_installed <-packages[!(packages %in% installed.packages()[ , "Package"])]
@@ -59,7 +59,8 @@ library(ReportingTools)
 library(fgsea)
 library(hrbrthemes) # ggplot2 themes
 library(viridis) # color palettes
-library(hexbin)
+library(venn)
+library(grid)
 ```
 
 ### Fetching Lung Cancer CPTAC-3 Project data from GDC
@@ -121,6 +122,11 @@ tmp <- gbm.query.2$results[[1]]
 tmp <- tmp[!duplicated(tmp$sample.submitter_id), ]
 gbm.query.2$results[[1]] <- tmp
 ```
+We are aware of the other sample types beside "Primary Tumor" and "Solid Tissue Normal", but when trying to run line 112 with all the samples types, we encountered an error:
+"Error in checkBarcodeDefinition(sample.type) : 
+  Primary Tumor;Primary Tumor;Primary Tumor was not found. Please select a difinition from the table above"
+We got this error for every other sample type. 
+After debugging for a while we have decided we have more than enough samples in both types.
 
 - Take a look at the results
 ```{r}
@@ -192,7 +198,7 @@ table(colData(gbm.data.2)$tissue_or_organ_of_origin)
 - Construct a DESeq2 object
   We want to investigate which genes are different between reformed smokers and non-smokers, between     
   reformed smokers and current smokers, and between reformed smokers for over 15 years and reformed 
-  smokers for 15 years or less, so our factor of interest is tabaco smoking duration
+  smokers for 15 years or less, so our factor of interest is tobacco smoking duration
   (DESeqDataSet will turn assays into counts and set smoking status as a factor, that is why we did not
   do it manually)
 - Perform DE analysis with DESeq2
@@ -347,10 +353,10 @@ ggplot(d.1[d.1$count < 200,], aes(tobacco_smoking_status, count)) +
 
 - Keep sample names for those with top and bottom quartiles of CEL for survival analysis
 ```{r}
-quartiles.1 <- quantile(d.1[d.1$tobacco_smoking_status == "Current Reformed Smoker for < or = 15 yrs",]$count, probs = c(0.25, 0.75))
+quartiles.1 <- quantile(d.1[d.1$tobacco_smoking_status == "Lifelong Non-Smoker",]$count, probs = c(0.25, 0.75))
 quartiles.1
-low.1 <- rownames(d.1[d.1$tobacco_smoking_status == "Current Reformed Smoker for < or = 15 yrs" & d.1$count <= quartiles.1[1],])
-high.1 <- rownames(d.1[d.1$tobacco_smoking_status == "Current Reformed Smoker for < or = 15 yrs" & d.1$count >= quartiles.1[2],])
+low.1 <- rownames(d.1[d.1$tobacco_smoking_status == "Lifelong Non-Smoker" & d.1$count <= quartiles.1[1],])
+high.1 <- rownames(d.1[d.1$tobacco_smoking_status == "Lifelong Non-Smoker" & d.1$count >= quartiles.1[2],])
 ```
 * We save the lower quartile and the upper quartile, and the samples that correspond to them, for the survival analysis later
 
@@ -476,7 +482,10 @@ pheatmap(normcounts[select, subset_samples],
          cutree_rows = 2)
 
 ```
-It seems that the status does not segment the data in this case.
+It appears the status measure lacks a clear segmentation of the data in the heatmap in this case.
+We beleive this might be due to the gene expression changes due to smoking cessation being highly individual, leading to significant overlap between reformed smokers and lifelong non-smokers. This biological variability can obscure clear segmentation in the heatmap.
+Also, the effects of smoking and cessation on gene expression are likely complex, involving numerous genes and pathways. The top 10 upregulated and downregulated genes may not sufficiently represent these comprehensive changes, resulting in a heatmap that does not segment the data well.
+* Note: we have tried taking other genes, genes 10-20, genes 1-20 etc, it resulted in a similar result.
 
 - To visualized relations between samples we can use PCA
 * simplify our complex datasets by reducing their dimensionality while retaining most of the 
@@ -517,7 +526,10 @@ Another way to plot the PCA is to use an internal DESeq2 function:
 plotPCA(vst(pca_dds.symbol, blind = TRUE), intgroup = c('tobacco_smoking_status'))
 ```
 
-We can visibly see ~3 clusters, above PC2 is mostly non-smokers, below it we have both.
+The PCA plot reveals three almost-distinct clusters, each containing samples from both lifelong non-smokers and reformed smokers. 
+We hypothesize that this is due to partial recovery of gene expression: For reformed smokers, it is possible that their gene expression profiles have partially recovered towards the profiles seen in lifelong non-smokers, but not completely. This partial recovery might contribute to the observed overlap in the PCA clusters.
+Shared pathways and biological processes affected by both smoking and smoking cessation might lead to similar gene expression profiles in both lifelong non-smokers and reformed smokers, contributing to the observed clustering.
+We will preforem GSEA for more in-depth analysis later on.
 
 -by disease progression or recurrence:
 ```{r}
@@ -530,18 +542,70 @@ qplot(pcaResults$x[,1], pcaResults$x[,2],
   labs(x="PC-1", y="PC-2", color="Progression Or Recurrence") +
   theme_minimal()
 ```
+We can see that the progression of the disease or its recurrence status does not segment the data well.
 
--by packs smoked per year
+-by vital status:
 ```{r}
 pcaResults = prcomp(normcounts.top1Kvar)
 
 # Plot PCA results
 qplot(pcaResults$x[,1], pcaResults$x[,2], 
-      col=colData(pca_dds.symbol)$pack_years_smoked, 
+      col=colData(pca_dds.symbol)$vital_status, 
       size=I(2), alpha=I(0.6)) +
-  labs(x="PC-1", y="PC-2", color="Packs Per Year") +
+  labs(x="PC-1", y="PC-2", color="Vital Status") +
   theme_minimal()
 ```
+We can see that the vital status does not segment the data well.
+
+-by tissue or organ:
+```{r}
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$tissue_or_organ_of_origin, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Tissue Or Organ") +
+  theme_minimal()
+```
+we can see that in:
+(1) Lung, NOS: Most of these samples are positioned below PC-2, suggesting that their gene expression profiles share
+    common characteristics that distinguish them from other lung regions.
+(2) Middle Lobe, Lung: These samples are predominantly located above PC-2 and to the left of PC-1. 
+    This indicates a distinct gene expression profile for the middle lobe, differentiating it from the other lung
+    regions.
+(3) In contrast, the samples from the Lower Lobe, Lung and Upper Lobe, Lung are distributed across all three clusters, indicating a higher degree of variability in their gene expression profiles.
+
+-by race:
+```{r}
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$race, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Race") +
+  theme_minimal()
+```
+
+(1) Asians: Most Asian samples are located in the right cluster, indicating a relatively homogeneous gene expression
+    profile in response to smoking status within this group.
+(2) Black Or African Americans: Black or African American samples are distributed across two clusters, with none present in the third cluster, suggesting a more heterogeneous gene expression response to smoking status among them.
+These can be due to: ahigher degree of genetic variation within the African American population, leading to different gene expression responses, environmental and lifestyle factors, smoking behaviors and more.
+
+-by gender:
+```{r}
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$gender, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Gender") +
+  theme_minimal()
+```
+We can see that gender does not segment the data well.
+
 
 ### Next We will perform a similar analysis for Current Smokers vs. Reformed Smoker
 
@@ -746,8 +810,10 @@ pheatmap(normcounts[select, subset_samples],
          cutree_rows = 2)
 
 ```
-It seems that the status does not segment the data in this case.
-
+It appears the status measure lacks a clear segmentation of the data in the heatmap in this case also.
+We beleive this might be due to the gene expression changes due to smoking cessation being highly individual, leading to significant overlap between reformed smokers and lifelong non-smokers. This biological variability can obscure clear segmentation in the heatmap.
+Also, the effects of smoking and cessation on gene expression are likely complex, involving numerous genes and pathways. The top 10 upregulated and downregulated genes may not sufficiently represent these comprehensive changes, resulting in a heatmap that does not segment the data well.
+* Note: we have tried taking other genes, genes 10-20, genes 1-20 etc, it resulted in a similar result.
 
 - To visualized relations between samples we can use PCA
 - First, lets find 1000 most variable genes:
@@ -781,6 +847,9 @@ qplot(pcaResults$x[,1], pcaResults$x[,2],
   labs(x="PC-1", y="PC-2", color="Tobacco Smoking Status") +
   theme_minimal()
 ```
+The PCA plot reveals three almost-distinct clusters, each containing samples from both lifelong non-smokers and reformed smokers. 
+We hypothesize that this may be since reformed smokers, especially those who have quit relatively recently, may still exhibit gene expression profiles similar to current smokers. The duration of smoking cessation might not be long enough for complete normalization of gene expression to a non-smoker profile.
+This will negate our theory for the PCA results of the previous case and therefore we will also provide an alternative hypothesis - that both current and reformed smokers likely exhibit significant heterogeneity in their gene expression responses. Factors such as the extent of smoking history, individual genetic differences, and other lifestyle factors can contribute to this variability, leading to overlapping clusters.
 
 -by disease progression or recurrence:
 ```{r}
@@ -793,19 +862,59 @@ qplot(pcaResults$x[,1], pcaResults$x[,2],
   labs(x="PC-1", y="PC-2", color="Progression Or Recurrence") +
   theme_minimal()
 ```
+We can see that the progression of the disease or its recurrence status does not segment the data well.
 
--by packs smoked per year
+-by vital status:
 ```{r}
 pcaResults = prcomp(normcounts.top1Kvar)
 
 # Plot PCA results
 qplot(pcaResults$x[,1], pcaResults$x[,2], 
-      col=colData(pca_dds.symbol)$pack_years_smoked, 
+      col=colData(pca_dds.symbol)$vital_status, 
       size=I(2), alpha=I(0.6)) +
-  labs(x="PC-1", y="PC-2", color="Packs Per Year") +
+  labs(x="PC-1", y="PC-2", color="Vital Status") +
   theme_minimal()
 ```
+We can see that the vital status does not segment the data well.
 
+-by tissue or organ:
+```{r}
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$tissue_or_organ_of_origin, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Tissue Or Organ") +
+  theme_minimal()
+```
+We can see that the tissue or organ does not segment the data well.
+
+-by race:
+```{r}
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$race, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Race") +
+  theme_minimal()
+```
+We can see that race does not segment the data well.
+
+-by gender:
+```{r}
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$gender, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Gender") +
+  theme_minimal()
+```
+We can see that gender does not segment the data well.
 
 ### Next We will perform a similar analysis for refoemred smokers of different time durations
 
@@ -898,10 +1007,10 @@ ATP2A1 encodes a protein which is a calcium pump enzyme that plays a crucial rol
 
 - Keep sample names for those with top and bottom quartiles of ATP2A1 for later
 ```{r}
-quartiles.3 <- quantile(d.3[d.3$tobacco_smoking_status == "Current Reformed Smoker for < or = 15 yrs",]$count, probs = c(0.25, 0.75))
+quartiles.3 <- quantile(d.3[d.3$tobacco_smoking_status == "Current Reformed Smoker for > 15 yrs",]$count, probs = c(0.25, 0.75))
 quartiles.3
-low.3 <- rownames(d.3[d.3$tobacco_smoking_status == "Current Reformed Smoker for < or = 15 yrs" & d.3$count <= quartiles.1[1],])
-high.3 <- rownames(d.3[d.3$tobacco_smoking_status == "Current Reformed Smoker for < or = 15 yrs" & d.3$count >= quartiles.3[2],])
+low.3 <- rownames(d.3[d.3$tobacco_smoking_status == "Current Reformed Smoker for > 15 yrs" & d.3$count <= quartiles.1[1],])
+high.3 <- rownames(d.3[d.3$tobacco_smoking_status == "Current Reformed Smoker for > 15 yrs" & d.3$count >= quartiles.3[2],])
 
 ```
 ## Visualization of gene expression for multiple genes
@@ -1053,6 +1162,10 @@ qplot(pcaResults$x[,1], pcaResults$x[,2],
   labs(x="PC-1", y="PC-2", color="Tobacco Smoking Status") +
   theme_minimal()
 ```
+The PCA plot reveals three almost-distinct clusters, each containing samples from both reformed smokers for <= 15 years and reformed smokers for > 15 years.
+This strengthen our hypothesize of the first case that most reformed smokers are closer to have stopped smoking for ~15 years and not for a few months. 
+So, this spread on the PCE plot is due to partial recovery of gene expression. 
+
 -by disease progression or recurrence:
 ```{r}
 pcaResults = prcomp(normcounts.top1Kvar)
@@ -1064,24 +1177,73 @@ qplot(pcaResults$x[,1], pcaResults$x[,2],
   labs(x="PC-1", y="PC-2", color="Progression Or Recurrence") +
   theme_minimal()
 ```
--by packs smoked per year
+We can see that the progression of the disease or its recurrence status does not segment the data well.
+
+-by vital status:
 ```{r}
 pcaResults = prcomp(normcounts.top1Kvar)
 
 # Plot PCA results
 qplot(pcaResults$x[,1], pcaResults$x[,2], 
-      col=colData(pca_dds.symbol)$pack_years_smoked, 
+      col=colData(pca_dds.symbol)$vital_status, 
       size=I(2), alpha=I(0.6)) +
-  labs(x="PC-1", y="PC-2", color="Packs Per Year") +
+  labs(x="PC-1", y="PC-2", color="Vital Status") +
+  theme_minimal()
+```
+We can see that the vital status number does not segment the data well.
+-by tissue or organ:
+```{r}
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$tissue_or_organ_of_origin, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Tissue Or Organ") +
+  theme_minimal()
+```
+we can see that in:
+(1) Lung, NOS: Most of these samples are positioned below PC-2, suggesting that their gene expression profiles share
+    common characteristics that distinguish them from other lung regions.
+(2) Middle Lobe, Lung: These samples are predominantly located above PC-2 and to the left of PC-1. 
+    This indicates a distinct gene expression profile for the middle lobe, differentiating it from the other lung
+    regions.
+(3) In contrast, the samples from the Lower Lobe, Lung and Upper Lobe, Lung are distributed across all three clusters, indicating a higher degree of variability in their gene expression profiles.
+
+-by race:
+```{r}
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$race, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Race") +
   theme_minimal()
 ```
 
+(1) Asian Samples: There seems to be a concentration of Asian individuals (yellow) towards the right side of the PCA
+    plot. This suggests that Asians have somewhat consistent gene expression profiles in response to
+    smoking cessation.
+(2) Other Samples: The other samples are more spread out, indicating greater variability in their gene expression
+    profiles in response to smoking cessation.
 
-### GSEA
-We'll use functional enrichment analysis with the Hallmark pathways gene sets.
+-by gender:
+```{r}
+pcaResults = prcomp(normcounts.top1Kvar)
 
-- First we need to unite the significant genes from all 3 cases to retrieve more reliable DEGs
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$gender, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Gender") +
+  theme_minimal()
+```
+We can see that gender does not segment the data well.
 
+### INTERSECT COMMON DEGs from all 3 cases
+
+- We need to intersect the significant genes from all 3 cases to retrieve more reliable DEGs
 ```{r}
 # Filter out non-significant genes from first case
 filter.sgn.genes.1 <- resOrdered.1
@@ -1095,25 +1257,66 @@ filter.sgn.genes.2.nona <- filter.sgn.genes.2[!is.na(filter.sgn.genes.2$padj),]
 filter.sgn.genes.2.nona <- filter.sgn.genes.2.nona[filter.sgn.genes.2.nona$padj < 0.05, ]
 filter.sgn.genes.2.nona
 
-# Filter out non-significant genes from second sace
+# Filter out non-significant genes from third sace
 filter.sgn.genes.3 <- resOrdered.3
 filter.sgn.genes.3.nona <- filter.sgn.genes.3[!is.na(filter.sgn.genes.3$padj),]
 filter.sgn.genes.3.nona <- filter.sgn.genes.3.nona[filter.sgn.genes.3.nona$padj < 0.05, ]
 filter.sgn.genes.3.nona
 
 # Intersect
-#filter.intersect <- filter.sgn.genes.1.nona[filter.sgn.genes.1.nona$symbol %in% filter.sgn.genes.2.nona$symbol ,]
-#filter.intersect <- filter.intersect[filter.intersect$symbol %in% filter.sgn.genes.3.nona$symbol ,]
-
-# Combine the filtered data frames into one (optional)
-filter.intersect <- rbind(filter.sgn.genes.1.nona, filter.sgn.genes.2.nona, filter.sgn.genes.3.nona)
-
-# Remove duplicates if necessary
-filter.intersect <- filter.intersect[!duplicated(filter.intersect$symbol),]
+filter.intersect <- filter.sgn.genes.1.nona[filter.sgn.genes.1.nona$symbol %in% filter.sgn.genes.2.nona$symbol ,]
+filter.intersect <- filter.intersect[filter.intersect$symbol %in% filter.sgn.genes.3.nona$symbol ,]
 filter.intersect
 ```
+- visualizing Venn diagram for common DEGs
+- prepare the data
+```{r}
+# Define the lists of genes for each category
+genes_case1 <- na.omit(filter.sgn.genes.1.nona$symbol)
+genes_case2 <- na.omit(filter.sgn.genes.2.nona$symbol)
+genes_case3 <- na.omit(filter.sgn.genes.3.nona$symbol)
 
-- Next we need to create an ordered vector by the log fold change with the gene 
+# Create the Venn diagram without the main title
+venn.plot <- venn.diagram(
+  x = list(
+    "Case 1" = genes_case1,
+    "Case 2" = genes_case2,
+    "Case 3" = genes_case3
+  ),
+  filename = NULL,
+  col = c("lightblue", "red", "green"),
+  fill = c("darkblue", "pink", "yellow"),
+  cat.pos = 0,          # Position the category names outside the diagram
+  cat.dist = 0.05       # Distance of category names from the circles
+)
+
+```
+
+- Plot the Venn diagram
+```{r}
+
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(1, 2, widths = unit(c(0.6, 0.4), "npc"))))
+pushViewport(viewport(layout.pos.col = 1))
+grid.draw(venn.plot)
+upViewport()
+
+# Add the descriptive references
+pushViewport(viewport(layout.pos.col = 2))
+grid.text("Case 1: Non-smokers vs \n reformed for <= 15 years", 
+          x = 0, y = 0.85, gp = gpar(fontsize = 10, col = "black"), just = "left")
+grid.text("Case 2: Current smokers vs \n reformed for <= 15 years", 
+          x = 0, y = 0.75, gp = gpar(fontsize = 10, col = "red"), just = "left")
+grid.text("Case 3: reformed for > 15 years vs \n reformed for <= 15 years", 
+          x = 0, y = 0.65, gp = gpar(fontsize = 10, col = "green"), just = "left")
+upViewport()
+
+```
+
+### GSEA
+We'll use functional enrichment analysis with the Hallmark pathways gene sets.
+
+- First we need to create an ordered vector by the log fold change with the gene 
   symbols as names:
 ```{r}
 
@@ -1144,27 +1347,20 @@ genes_ordered
 ```{r}
 # Load hallmark gene sets
 hallmarks <- msigdbr(species = "Homo sapiens", category = "H")
-hallmarks
 hallmarks_list <- split(hallmarks$gene_symbol, hallmarks$gs_name)
-hallmarks_list
 ```
-- fix 
+
+- view hallmarks data 
 ```{r}
-# Get all genes in hallmarks_list
-all_genes_in_hallmarks <- unique(unlist(hallmarks_list))
-
-# Get gene identifiers in genes_ordered
-genes_in_ordered <- names(genes_ordered)
-
-# Check overlap
-overlap_genes <- intersect(all_genes_in_hallmarks, genes_in_ordered)
-
 # Summary of the overlap
 cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks), "\n")
 cat("Number of genes in genes_ordered:", length(genes_in_ordered), "\n")
 cat("Number of overlapping genes:", length(overlap_genes), "\n")
 
 ```
+We got 768 overlapping genes.
+
+
 
 - Using GSEA() as done in class
 ```{r}
@@ -1181,10 +1377,170 @@ gsea_results_df <- as.data.frame(gsea_results)
 significant_results <- gsea_results_df %>% filter(padj < 0.05)
 significant_results
 ```
+
+We received zero combined hallmarks.
+
+Let us run GSEA for every case:
+
+- Filter significant genes and remove NA from the first case
+```{r}
+filter.sgn.genes.1 <- resOrdered.1
+filter.sgn.genes.1.nona <- filter.sgn.genes.1[!is.na(filter.sgn.genes.1$padj),]
+filter.sgn.genes.1.nona <- filter.sgn.genes.1.nona[filter.sgn.genes.1.nona$padj < 0.05, ]
+filter.sgn.genes.1.nona
+```
+
+- Next we need to create an ordered vector by the log fold change with the gene 
+  symbols as names:
+```{r}
+# Convert DESeqResults object to a data frame
+filter.first_df <- as.data.frame(filter.sgn.genes.1.nona)
+
+# Remove rows with NA in the symbol column
+filtered_data_1 <- filter.first_df %>%
+  filter(!is.na(symbol))
+
+# Average log2FoldChange for duplicate gene symbols
+unique_genes <- filtered_data_1 %>%
+  group_by(symbol) %>%
+  summarize(log2FoldChange = mean(log2FoldChange, na.rm = TRUE)) %>%
+  ungroup()
+
+# Order the unique genes by log2FoldChange in descending order
+unique_genes_ordered_1 <- unique_genes %>%
+  arrange(desc(log2FoldChange))
+
+# Create a named vector with log2FoldChange values and gene symbols as names
+genes_ordered_1 <- setNames(unique_genes_ordered_1$log2FoldChange, unique_genes_ordered_1$symbol)
+
+genes_ordered_1
+```
+
+- For the hallmarks pathways gene sets we'll use msigdbr package.
+```{r}
+# Load hallmark gene sets
+hallmarks_1 <- msigdbr(species = "Homo sapiens", category = "H")
+hallmarks_list_1 <- split(hallmarks_1$gene_symbol, hallmarks_1$gs_name)
+```
+
+- view hallmark data 
+```{r}
+# Get all genes in hallmarks_list
+all_genes_in_hallmarks_1 <- unique(unlist(hallmarks_list_1))
+
+# Get gene identifiers in genes_ordered
+genes_in_ordered_1 <- names(genes_ordered_1)
+
+# Check overlap
+overlap_genes_1 <- intersect(all_genes_in_hallmarks_1, genes_in_ordered_1)
+
+# Summary of the overlap
+cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks_1), "\n")
+cat("Number of genes in genes_ordered:", length(genes_in_ordered_1), "\n")
+cat("Number of overlapping genes:", length(overlap_genes_1), "\n")
+
+```
+We received 466 overlapping genes.
+
+- Using GSEA() as done in class
+```{r}
+# Run GSEA
+set.seed(123)  # Set seed for reproducibility
+gsea_results_1 <- fgsea(pathways = hallmarks_list_1, 
+                      stats = genes_ordered_1, 
+                      minSize = 15, 
+                      maxSize = 500)
+gsea_results_1
+# Convert results to a data frame
+gsea_results_df_1 <- as.data.frame(gsea_results_1)
+# Filter significant results (e.g., padj < 0.05)
+significant_results_1 <- gsea_results_df_1 %>% filter(padj < 0.05)
+significant_results_1
+```
+We received 0 pathways for the first case.
+
+- Filter significant genes and remove NA from the second case
+```{r}
+filter.sgn.genes.2 <- resOrdered.2
+filter.sgn.genes.2.nona <- filter.sgn.genes.2[!is.na(filter.sgn.genes.2$padj),]
+filter.sgn.genes.2.nona <- filter.sgn.genes.2.nona[filter.sgn.genes.2.nona$padj < 0.05, ]
+filter.sgn.genes.2.nona
+```
+
+- Next we need to create an ordered vector by the log fold change with the gene 
+  symbols as names:
+```{r}
+
+# Convert DESeqResults object to a data frame
+filter.second_df <- as.data.frame(filter.sgn.genes.2.nona)
+
+# Remove rows with NA in the symbol column
+filtered_data_2 <- filter.second_df %>%
+  filter(!is.na(symbol))
+
+# Average log2FoldChange for duplicate gene symbols
+unique_genes_2 <- filtered_data_2 %>%
+  group_by(symbol) %>%
+  summarize(log2FoldChange = mean(log2FoldChange, na.rm = TRUE)) %>%
+  ungroup()
+
+# Order the unique genes by log2FoldChange in descending order
+unique_genes_ordered_2 <- unique_genes_2 %>%
+  arrange(desc(log2FoldChange))
+
+# Create a named vector with log2FoldChange values and gene symbols as names
+genes_ordered_2 <- setNames(unique_genes_ordered_2$log2FoldChange, unique_genes_ordered_2$symbol)
+
+genes_ordered_2
+```
+
+- For the hallmarks pathways gene sets we'll use msigdbr package.
+```{r}
+# Load hallmark gene sets
+hallmarks_2 <- msigdbr(species = "Homo sapiens", category = "H")
+hallmarks_list_2 <- split(hallmarks_2$gene_symbol, hallmarks_2$gs_name)
+```
+
+- view hallmark data 
+```{r}
+# Get all genes in hallmarks_list
+all_genes_in_hallmarks_2 <- unique(unlist(hallmarks_list_2))
+
+# Get gene identifiers in genes_ordered
+genes_in_ordered_2 <- names(genes_ordered_2)
+
+# Check overlap
+overlap_genes_2 <- intersect(all_genes_in_hallmarks_2, genes_in_ordered_2)
+
+# Summary of the overlap
+cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks_2), "\n")
+cat("Number of genes in genes_ordered:", length(genes_in_ordered_2), "\n")
+cat("Number of overlapping genes:", length(overlap_genes_2), "\n")
+
+```
+We received 403 genes.
+
+- Using GSEA() as done in class
+```{r}
+# Run GSEA
+set.seed(123)  # Set seed for reproducibility
+gsea_results_2 <- fgsea(pathways = hallmarks_list_2, 
+                      stats = genes_ordered_2, 
+                      minSize = 15, 
+                      maxSize = 500)
+gsea_results_2
+# Convert results to a data frame
+gsea_results_df_2 <- as.data.frame(gsea_results_2)
+# Filter significant results (e.g., padj < 0.05)
+significant_results_2 <- gsea_results_df_2 %>% filter(padj < 0.05)
+significant_results_2
+```
+we got 5 pathways!
+
 - Visualizing the results
 ```{r}
 # Create a dot plot of significant pathways
-ggplot(significant_results, aes(x = reorder(pathway, NES), y = NES)) +
+ggplot(significant_results_2, aes(x = reorder(pathway, NES), y = NES)) +
   geom_point(aes(size = -log10(padj), color = NES)) +
   coord_flip() +
   labs(x = "Pathway", y = "Normalized Enrichment Score (NES)", 
@@ -1193,9 +1549,198 @@ ggplot(significant_results, aes(x = reorder(pathway, NES), y = NES)) +
 
 ```
 
+- Filter significant genes and removes NAs from third case
 ```{r}
-length(genes_ordered)
+# Filter out non-significant genes from third sace
+filter.sgn.genes.3 <- resOrdered.3
+filter.sgn.genes.3.nona <- filter.sgn.genes.3[!is.na(filter.sgn.genes.3$padj),]
+filter.sgn.genes.3.nona <- filter.sgn.genes.3.nona[filter.sgn.genes.3.nona$padj < 0.05, ]
+filter.sgn.genes.3.nona
 ```
+
+- Next we need to create an ordered vector by the log fold change with the gene 
+  symbols as names:
+```{r}
+
+# Convert DESeqResults object to a data frame
+filter.third_df <- as.data.frame(filter.sgn.genes.3.nona)
+
+# Remove rows with NA in the symbol column
+filtered_data_3 <- filter.third_df %>%
+  filter(!is.na(symbol))
+
+# Average log2FoldChange for duplicate gene symbols
+unique_genes_3 <- filtered_data_3 %>%
+  group_by(symbol) %>%
+  summarize(log2FoldChange = mean(log2FoldChange, na.rm = TRUE)) %>%
+  ungroup()
+
+# Order the unique genes by log2FoldChange in descending order
+unique_genes_ordered_3 <- unique_genes_3 %>%
+  arrange(desc(log2FoldChange))
+
+# Create a named vector with log2FoldChange values and gene symbols as names
+genes_ordered_3 <- setNames(unique_genes_ordered_3$log2FoldChange, unique_genes_ordered_3$symbol)
+
+genes_ordered_3
+```
+
+- For the hallmarks pathways gene sets we'll use msigdbr package.
+```{r}
+# Load hallmark gene sets
+hallmarks_3 <- msigdbr(species = "Homo sapiens", category = "H")
+hallmarks_list_3 <- split(hallmarks_3$gene_symbol, hallmarks_3$gs_name)
+```
+
+- view hallmark data
+```{r}
+# Get all genes in hallmarks_list
+all_genes_in_hallmarks_3 <- unique(unlist(hallmarks_list_3))
+
+# Get gene identifiers in genes_ordered
+genes_in_ordered_3 <- names(genes_ordered_3)
+
+# Check overlap
+overlap_genes_3 <- intersect(all_genes_in_hallmarks_3, genes_in_ordered_3)
+
+# Summary of the overlap
+cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks_3), "\n")
+cat("Number of genes in genes_ordered:", length(genes_in_ordered_3), "\n")
+cat("Number of overlapping genes:", length(overlap_genes_3), "\n")
+
+```
+we received 109 genes.
+
+- Using GSEA() as done in class
+```{r}
+# Run GSEA
+set.seed(123)  # Set seed for reproducibility
+gsea_results_3 <- fgsea(pathways = hallmarks_list_3, 
+                      stats = genes_ordered_3, 
+                      minSize = 15, 
+                      maxSize = 500)
+gsea_results_3
+# Convert results to a data frame
+gsea_results_df_3 <- as.data.frame(gsea_results_3)
+# Filter significant results (e.g., padj < 0.05)
+significant_results_3 <- gsea_results_df_3 %>% filter(padj < 0.05)
+significant_results_3
+```
+
+we got 0 pathways.
+
+
+Let us ran GSEA for all cases combined.
+- First we need to unite the significant genes from all 3 cases to retrieve more reliable DEGs
+
+```{r}
+filter.unite <- filter.sgn.genes.1.nona[filter.sgn.genes.1.nona$symbol %in% filter.sgn.genes.2.nona$symbol ,]
+filter.unite <- filter.intersect[filter.intersect$symbol %in% filter.sgn.genes.3.nona$symbol ,]
+
+# Combine the filtered data frames into one (optional)
+filter.unite <- rbind(filter.sgn.genes.1.nona, filter.sgn.genes.2.nona, filter.sgn.genes.3.nona)
+
+# Remove duplicates if necessary
+filter.unite <- filter.unite[!duplicated(filter.unite$symbol),]
+filter.unite
+```
+
+- Next we need to create an ordered vector by the log fold change with the gene 
+  symbols as names:
+```{r}
+
+# Convert DESeqResults object to a data frame
+filter.unite_df <- as.data.frame(filter.unite)
+
+# Remove rows with NA in the symbol column
+filtered_data_u <- filter.unite_df %>%
+  filter(!is.na(symbol))
+
+# Average log2FoldChange for duplicate gene symbols
+unique_genes_u <- filtered_data_u %>%
+  group_by(symbol) %>%
+  summarize(log2FoldChange = mean(log2FoldChange, na.rm = TRUE)) %>%
+  ungroup()
+
+# Order the unique genes by log2FoldChange in descending order
+unique_genes_ordered_u <- unique_genes_u %>%
+  arrange(desc(log2FoldChange))
+
+# Create a named vector with log2FoldChange values and gene symbols as names
+genes_ordered_u <- setNames(unique_genes_ordered_u$log2FoldChange, unique_genes_ordered_u$symbol)
+
+genes_ordered_u
+```
+
+- For the hallmarks pathways gene sets we'll use msigdbr package.
+```{r}
+# Load hallmark gene sets
+hallmarks_u <- msigdbr(species = "Homo sapiens", category = "H")
+hallmarks_list_u <- split(hallmarks_u$gene_symbol, hallmarks_u$gs_name)
+```
+
+- view hallmark data 
+```{r}
+# Get all genes in hallmarks_list
+all_genes_in_hallmarks_u <- unique(unlist(hallmarks_list_u))
+
+# Get gene identifiers in genes_ordered
+genes_in_ordered_u <- names(genes_ordered_u)
+
+# Check overlap
+overlap_genes_u <- intersect(all_genes_in_hallmarks_u, genes_in_ordered_u)
+
+# Summary of the overlap
+cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks_u), "\n")
+cat("Number of genes in genes_ordered:", length(genes_in_ordered_u), "\n")
+cat("Number of overlapping genes:", length(overlap_genes_u), "\n")
+
+```
+we got 768 genes!
+
+- Using GSEA() as done in class
+```{r}
+# Run GSEA
+set.seed(123)  # Set seed for reproducibility
+gsea_results_u <- fgsea(pathways = hallmarks_list_u, 
+                      stats = genes_ordered_u, 
+                      minSize = 15, 
+                      maxSize = 500)
+gsea_results_u
+# Convert results to a data frame
+gsea_results_df_u <- as.data.frame(gsea_results_u)
+# Filter significant results (e.g., padj < 0.05)
+significant_results_u <- gsea_results_df_u %>% filter(padj < 0.05)
+significant_results_u
+```
+we got 1 pathway!
+
+- Visualizing the results
+```{r}
+# Create a dot plot of significant pathways
+ggplot(significant_results_u, aes(x = reorder(pathway, NES), y = NES)) +
+  geom_point(aes(size = -log10(padj), color = NES)) +
+  coord_flip() +
+  labs(x = "Pathway", y = "Normalized Enrichment Score (NES)", 
+       title = "GSEA Results", size = "-log10(padj)", color = "NES") +
+  theme_minimal()
+
+```
+
+
+
+Unlike HW2, in the intersection case, in cases 1, and in case 3 we got 0 hallmarks, and in the union case we got just one Hallmark.
+As we interpret the GSEA results, we understand that we might have made some wrong 
+pre-processing decisions / aggregating methods / different computation of COMMON DEGs.
+
+Nonetheless, the sole hallmark we received fits our analysis,
+as we got The HALLMARK_KRAS_SIGNALING_UP gene set, which represents genes that are upregulated in response to KRAS activation. 
+KRAS is a proto-oncogene that encodes a protein involved in the regulation of cell division, and it plays a crucial role in various cellular processes, including growth, differentiation, and apoptosis. 
+Mutations in KRAS are frequently found in various cancers, leading to the continuous activation of KRAS signaling pathways, which in turn promote cancer cell proliferation and survival.
+We suggest that the KRAS signaling pathway is notably affected by the duration of smoking cessation.
+
+In addition, though this kind of result might indicate on a troublesome analysis
+it's not uncommon to get one hallmark for 4774 genes.
 
 Unlike HW2, we got here just one Hallmark.
 As we interpret the GSEA results, we understand that we might have made some wrong 
