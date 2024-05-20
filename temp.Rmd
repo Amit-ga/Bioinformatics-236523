@@ -1771,6 +1771,8 @@ View(gbm.clin)
 ```{r}
 GPR15.low <- read.csv("GPR15.low1.csv", header = TRUE)
 GPR15.high <- read.csv("GPR15.high1.csv", header = TRUE)
+GPR15.low <- read.csv("GPR15.low1.csv", header = TRUE)$x
+GPR15.high <- read.csv("GPR15.high1.csv", header = TRUE)$x
 ```
 
 - Take only HAS1 high/low samples
