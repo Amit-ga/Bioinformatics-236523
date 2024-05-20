@@ -359,6 +359,10 @@ low.1 <- rownames(d.1[d.1$tobacco_smoking_status == "Lifelong Non-Smoker" & d.1$
 high.1 <- rownames(d.1[d.1$tobacco_smoking_status == "Lifelong Non-Smoker" & d.1$count >= quartiles.1[2],])
 ```
 * We save the lower quartile and the upper quartile, and the samples that correspond to them, for the survival analysis later
+```{r}
+write.csv(low.1, file = "GPR15.low1.csv", row.names = FALSE)
+write.csv(high.1, file = "GPR15.high1.csv", row.names = FALSE)
+```
 
 ## Visualization of gene expression for multiple genes
 
@@ -1762,6 +1766,11 @@ it's not uncommon to get one hallmark for 4774 genes.
 ```{r}
 gbm.clin <- GDCquery_clinic("TCGA-GBM", "clinical")
 View(gbm.clin)
+```
+- Read GPR15 low, high samples from the first analysis 
+```{r}
+GPR15.low <- read.csv("GPR15.low1.csv", header = TRUE)
+GPR15.high <- read.csv("GPR15.high1.csv", header = TRUE)
 ```
 
 - Take only HAS1 high/low samples
