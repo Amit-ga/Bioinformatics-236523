@@ -25,6 +25,7 @@ if (!require("BiocManager", quietly = TRUE))
 #install packages
 packages <- c("tidyverse","hrbrthemes", "viridis", "msigdbr", "dplyr", "tibble", "venn", "grid") 
 biocManager_packages <- c("TCGAbiolinks","DESeq2", "GEOquery", "hrbrthemes", "apeglm", "AnnotationDbi", "org.Hs.eg.db","ReportingTools", "EnhancedVolcano", "pheatmap", "clusterProfiler", "fgsea")
+biocManager_packages <- c("TCGAbiolinks","DESeq2", "GEOquery", "hrbrthemes", "apeglm", "AnnotationDbi", "org.Hs.eg.db","ReportingTools", "EnhancedVolcano", "pheatmap", "clusterProfiler", "fgsea", "survminer")
 
 not_installed <-packages[!(packages %in% installed.packages()[ , "Package"])]
 biocManager_not_installed <- biocManager_packages[!(biocManager_packages %in% installed.packages()[ , "Package"])]
@@ -61,6 +62,7 @@ library(hrbrthemes) # ggplot2 themes
 library(viridis) # color palettes
 library(venn)
 library(grid)
+library(survminer)
 ```
 
 ### Fetching Lung Cancer CPTAC-3 Project data from GDC
