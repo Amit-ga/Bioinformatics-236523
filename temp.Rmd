@@ -1769,6 +1769,21 @@ it's not uncommon to get one hallmark for 4774 genes.
 gbm.clin <- GDCquery_clinic("TCGA-GBM", "clinical")
 View(gbm.clin)
 ```
+
+- Take only samples with "Lung" cancer
+
+```{r}
+tissue <- c( "Lower lobe, lung", "Lung, NOS", "Middle lobe, lung", "Upper lobe, lung")
+
+filtered_data <- gbm.clin[gbm.clin$tissue_or_organ_of_origin %in% tissue, ]
+gbm.clin <- filtered_data
+```
+
+- remove "Not Reported" cases
+```{r}
+gbm.clin <- gbm.clin[gbm.clin$ajcc_pathologic_stage != "Not Reported", ]
+```
+
 - Read GPR15 low, high samples from the first analysis 
 ```{r}
 GPR15.low <- read.csv("GPR15.low1.csv", header = TRUE)
