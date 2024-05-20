@@ -703,6 +703,11 @@ low.2 <- rownames(d.2[d.2$tobacco_smoking_status == "Current Smoker" & d.2$count
 high.2 <- rownames(d.2[d.2$tobacco_smoking_status == "Current Smoker" & d.2$count >= quartiles.1[2],])
 ```
 
+* We save the lower quartile and the upper quartile, and the samples that correspond to them, for the survival analysis later
+```{r}
+write.csv(low.2, file = "WSCD2.low2.csv", row.names = FALSE)
+write.csv(high.2, file = "WSCD2.high2.csv", row.names = FALSE)
+```
 ## Visualization of gene expression for multiple genes
 
 - Volcano Plot
@@ -1019,6 +1024,13 @@ low.3 <- rownames(d.3[d.3$tobacco_smoking_status == "Current Reformed Smoker for
 high.3 <- rownames(d.3[d.3$tobacco_smoking_status == "Current Reformed Smoker for > 15 yrs" & d.3$count >= quartiles.3[2],])
 
 ```
+
+* We save the lower quartile and the upper quartile, and the samples that correspond to them, for the survival analysis later
+```{r}
+write.csv(low.3, file = "ATP2A1.low3.csv", row.names = FALSE)
+write.csv(high.3, file = "ATP2A1.high3.csv", row.names = FALSE)
+```
+
 ## Visualization of gene expression for multiple genes
 
 - Volcano Plot
@@ -1786,6 +1798,8 @@ gbm.clin <- filtered_data
 gbm.clin <- gbm.clin[gbm.clin$ajcc_pathologic_stage != "Not Reported", ]
 ```
 
+### Survival Analysis on groups: Lifelong non-smoker vs.Current reformed smoker for <= 15 years
+
 - Read GPR15 low, high samples from the first analysis 
 ```{r}
 GPR15.low <- read.csv("GPR15.low1.csv", header = TRUE)
@@ -1825,4 +1839,65 @@ TCGAanalyze_survival(
 ```
 
 # doi:10.1007/s12307-019-00224-2
+### Survival Analysis on groups: Current smoker vs. Current reformed smoker for <= 15 years
+
+- Read WSCD2 low, high samples from the second analysis 
+```{r}
+WSCD2.low <- read.csv("WSCD2.low2.csv", header = TRUE)$x
+WSCD2.high <- read.csv("WSCD2.high2.csv", header = TRUE)$x
+```
+
+- Take only WSCD2 high/low samples 
+```{r}
+gbm.clin.WSCD2 <- gbm.clin[gbm.clin$submitter_id %in% c(gbm.data@colData[WSCD2.high,]$submitter_id,
+                                                       gbm.data@colData[WSCD2.low,]$submitter_id),]
+```
+
+- Add a column that indicates which samples is high/low
+```{r}
+gbm.clin.WSCD2$expression <- ifelse(gbm.clin.WSCD2$submitter_id %in% gbm.data@colData[WSCD2.high,]$submitter_id,
+                                   "high", "low")
+```
+
+- Create a survival plot with Log-rank test
+```{r}
+TCGAanalyze_survival(
+    data = gbm.clin.WSCD2,
+    clusterCol = "expression",
+    main = "Survival analysis of Glioblastoma\npatients by WSCD2 expression",
+    height = 10,
+    width=10,
+    filename = "KM_curv_WSCD2.pdf")
+```
+
+### Survival Analysis on groups: Current reformed smoker for <= 15 years vs. Current reformed smoker for > 15 years
+
+- Read ATP2A1 low, high samples from the third analysis 
+```{r}
+ATP2A1.low <- read.csv("ATP2A1.low3.csv", header = TRUE)$x
+ATP2A1.high <- read.csv("ATP2A1.high3.csv", header = TRUE)$x
+```
+
+- Take only ATP2A1 high/low samples 
+```{r}
+gbm.clin.ATP2A1 <- gbm.clin[gbm.clin$submitter_id %in% c(gbm.data@colData[ATP2A1.high,]$submitter_id,
+                                                       gbm.data@colData[ATP2A1.low,]$submitter_id),]
+```
+
+- Add a column that indicates which samples is high/low
+```{r}
+gbm.clin.ATP2A1$expression <- ifelse(gbm.clin.ATP2A1$submitter_id %in% gbm.data@colData[ATP2A1.high,]$submitter_id,
+                                   "high", "low")
+```
+
+- Create a survival plot with Log-rank test
+```{r}
+TCGAanalyze_survival(
+    data = gbm.clin.ATP2A1,
+    clusterCol = "expression",
+    main = "Survival analysis of Glioblastoma\npatients by ATP2A1 expression",
+    height = 10,
+    width=10,
+    filename = "KM_curv_ATP2A1.pdf")
+```
 
