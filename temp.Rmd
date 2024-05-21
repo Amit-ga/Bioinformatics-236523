@@ -1867,6 +1867,42 @@ ggsurvplot(
 ```
 Add conclusion here: ------------------------------------------
 
+
+### Lets continue with more interesting question: how does tumor stage affect survival?
+
+The tumor_stage variable that TCGA provides for this tumor contains both stages and sub-stages, eg stage IIIA or stage IVB. We want to join together the sub-stages, to increase the group size and reduce complexity (and thus increase the power of the logrank statistics).
+
+```{r}
+# remove any of the numbers "1", "2" or "3", but only if they are at the end of the name
+# eg "Stage IA2" would become simply "Stage IA"
+gbm.clin.df$ajcc_pathologic_stage = gsub("[123]$", "", gbm.clin.df$ajcc_pathologic_stage)
+
+# remove any of the letters "A", "B" or "C", but only if they are at the end of the name
+# eg "stage IIIA" would become simply "stage III"
+gbm.clin.df$ajcc_pathologic_stage = gsub("[ABC]$", "", gbm.clin.df$ajcc_pathologic_stage)
+
+# we remove those with stage "not reported", since they are unknown
+gbm.clin.df[which(gbm.clin.df$ajcc_pathologic_stage == "Not Reported"), "ajcc_pathologic_stage"] = NA
+
+# finally, we also remove those with tumor stage 4, since they are too few
+gbm.clin.df[which(gbm.clin.df$ajcc_pathologic_stage == "Stage IV"), "ajcc_pathologic_stage"] = NA
+
+table(gbm.clin.df$ajcc_pathologic_stage)
+```
+
+```{r}
+ggsurvplot(
+  fit=survfit(lung.Surv ~ ajcc_pathologic_stage, data=gbm.clin.df),
+  data=gbm.clin.df,
+  legend.title = "tumor stage",
+  legend.labs = c("Stage I", "Stage II", "Stage III"),
+  xlab = "Days",
+  pval=T,
+  risk.table=T,
+  risk.table.col="strata",
+  tables.height = 0.35)
+```
+Add conclusion here: ------------------------------------------
 ### Survival Analysis on groups: Lifelong non-smoker vs.Current reformed smoker for <= 15 years
 
 - Read GPR15 low, high samples from the first analysis 
