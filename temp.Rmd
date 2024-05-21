@@ -1830,9 +1830,42 @@ lung.Surv <- Surv(gbm.clin.df$overall_survival, gbm.clin.df$deceased)
 ```
 
 - remove "Not Reported" cases
+## Kaplan-Meier plots
+
+### First start with basic question: does the amount of cigarettes per day influence survival in lung cancer patients?
+- For doing so, we will divide the patients into 2 groups: Patients who smoke over 5 cigarettes per day, and Patients who smoke under 5 cigarettes per day.
+```{r}
+# handle 'NAs' in Lifelong Non-Smoker 
+gbm.clin.df <- gbm.clin.df %>%
+  mutate(cigarettes_per_day = case_when(
+    tobacco_smoking_status == "Lifelong Non-Smoker" ~ 0,
+    TRUE ~ cigarettes_per_day  # Keep the original value otherwise
+  ))
+```
+```{r}
+gbm.clin.df <- gbm.clin.df %>%
+  mutate(more_than_5_cigarettes_pd = case_when(
+    cigarettes_per_day < 5 ~ "NO",
+    cigarettes_per_day >= 5 ~ "YES",
+    is.na(years_smoked) ~ NA_character_
+  ))
+```
+
+
 ```{r}
 gbm.clin <- gbm.clin[gbm.clin$ajcc_pathologic_stage != "Not Reported", ]
+ggsurvplot(
+  fit=survfit(lung.Surv ~ more_than_5_cigarettes_pd, data=gbm.clin.df),
+  data=gbm.clin.df,
+  xlab = "Days",
+  legend.title = "cigarettes per day",
+  legend.labs = c("less than 5", "more than 5"),
+  pval=T,
+  risk.table=T,
+  risk.table.col="strata",
+  tables.height = 0.3)
 ```
+Add conclusion here: ------------------------------------------
 
 ### Survival Analysis on groups: Lifelong non-smoker vs.Current reformed smoker for <= 15 years
 
