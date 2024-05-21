@@ -1791,6 +1791,42 @@ tissue <- c( "Lower lobe, lung", "Lung, NOS", "Middle lobe, lung", "Upper lobe, 
 
 filtered_data <- gbm.clin[gbm.clin$tissue_or_organ_of_origin %in% tissue, ]
 gbm.clin <- filtered_data
+rm(filtered_data)
+```
+
+- Choose only information that is relevant to survival analysis
+```{r}
+gbm.clin.df = gbm.clin[, 
+                           c("submitter_id",
+                             "gender",
+                             "vital_status", 
+                             "ajcc_pathologic_stage", 
+                             "days_to_death",
+                             "days_to_last_follow_up",
+                             "years_smoked",
+                             "cigarettes_per_day",
+                             "tobacco_smoking_status")]
+```
+
+- Before we can proceed, we need to change part of this information in a way that is acceptable to the methods from the survival package we are using:
+```{r}
+# create a new boolean variable that has TRUE for dead patients
+# and FALSE for live patients
+gbm.clin.df$deceased = gbm.clin.df$vital_status == "Dead"
+
+# create an "overall survival" variable that is equal to days_to_death
+# for dead patients, and to days_to_last_follow_up for patients who
+# are still alive
+gbm.clin.df$overall_survival = ifelse(gbm.clin.df$deceased,
+                                   gbm.clin.df$days_to_death,
+                                   gbm.clin.df$days_to_last_follow_up)
+
+# convert overall_survival to numeric for Surv object
+gbm.clin.df$overall_survival <- as.numeric(as.character(gbm.clin.df$overall_survival))
+```
+- Form a dependent variable out of the overall_survival and deceased information:
+```{r}
+lung.Surv <- Surv(gbm.clin.df$overall_survival, gbm.clin.df$deceased)
 ```
 
 - remove "Not Reported" cases
