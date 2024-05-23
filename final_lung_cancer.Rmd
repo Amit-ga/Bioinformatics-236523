@@ -1,0 +1,216 @@
+---
+title: "Bioinformatics Final Project"
+author: "Amit Gabay & Hen Israel"
+date: "2024-05-23"
+output: html_document
+---
+
+Abstract
+Lung cancer remains one of the leading causes of cancer-related mortality worldwide.
+According to the majority of studies, cigarette smoking is recognized as a major risk factor for lung-cancer development. 
+Even so, despite the well-established association between smoking and lung cancer, we have found that there is still a gap in our understanding of the molecular mechanisms underlying the relationship between smoking cessation and lung cancer pathogenesis. 
+This study aimes to investigate the specific molecular alterations occurring in lung tissue following smoking cessation and their impact on the initiation, progression, and prognosis of smoking-related lung cancer. Using transcriptomic profiling techniques, we analyze gene expression patterns in lung tissue samples obtained from individuals with varying smoking histories, including current smokers, former smokers who had quit smoking, and never-smokers.
+
+
+Our analysis revealed significant differences in gene expression profiles between individuals who had quit smoking and those who continued to smoke, particularly in genes associated with cellular signaling pathways, DNA repair mechanisms, and immune response. Furthermore, we identified specific molecular signatures associated with smoking cessation that were indicative of a favorable prognosis in individuals with smoking-related lung cancer. These findings provide novel insights into the molecular mechanisms underlying the beneficial effects of smoking cessation on lung cancer pathogenesis and have important implications for personalized prevention, diagnosis, and treatment strategies. By elucidating the molecular underpinnings of smoking-related lung cancer, this study contributes to our understanding of the disease and offers potential avenues for improving clinical outcomes and reducing the burden of lung cancer on individuals and society.
+
+
+
+Install required missing packages
+```{r}
+# install BiocManager
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+#install packages
+packages <- c("tidyverse","hrbrthemes", "viridis", "msigdbr", "dplyr", "tibble", "venn","VennDiagram", "grid") 
+biocManager_packages <- c("TCGAbiolinks","DESeq2", "GEOquery", "hrbrthemes", "apeglm", "AnnotationDbi", "org.Hs.eg.db","ReportingTools", "EnhancedVolcano", "pheatmap", "clusterProfiler", "fgsea")
+
+not_installed <-packages[!(packages %in% installed.packages()[ , "Package"])]
+biocManager_not_installed <- biocManager_packages[!(biocManager_packages %in% installed.packages()[ , "Package"])]
+
+for (package in not_installed) {
+  install.packages(package) 
+}
+
+for (package in biocManager_not_installed) {
+  BiocManager::install(package) 
+}
+
+```
+
+import all packages into R
+```{r}
+library(TCGAbiolinks)
+library(tidyverse)
+library(DESeq2)
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+library(EnhancedVolcano)
+library(tidyverse)
+library(GEOquery)
+library(apeglm)
+library(pheatmap)
+library(msigdbr)
+library(dplyr)
+library(tibble)
+library(clusterProfiler)
+library(ReportingTools)
+library(fgsea)
+library(hrbrthemes) # ggplot2 themes
+library(viridis) # color palettes
+library(venn)
+library(VennDiagram)
+library(grid)
+```
+
+### Fetching Lung Cancer CPTAC-3 Project data from GDC
+
+Set working dir
+```{r}
+setwd("C:/Users/Amit_g/OneDrive - Technion/Documents/Bioinformatics_Final_Project")
+```
+
+- Set a query to access TCGA's lung cancer CPTAC-3 project transcriptome data
+```{r}
+cptac.query <- GDCquery(project = "CPTAC-3", data.category = "Transcriptome Profiling")
+```
+
+- view query's results
+```{r}
+query.res <- getResults(cptac.query)
+View(query.res)
+#write.csv(query.res, "query_res.csv")
+```
+
+- The transcriptome might contain other types of data except mRNA expression
+```{r}
+table(query.res$data_type)
+```
+
+- A standardized preprocessing step for gene expression data analysis includes aligning the raw sequencing reads to the reference genome with a program called STAR to create the counts matrix.
+```{r}
+table(query.res$analysis_workflow_type)
+```
+
+- Note! There are also some normal and other types of samples
+```{r}
+table(query.res$sample_type)
+```
+
+- Fix query and Remove Duplicates 
+```{r}
+cptac.query <- GDCquery(
+  project = "CPTAC-3", 
+  data.category = "Transcriptome Profiling",
+  data.type = "Gene Expression Quantification", 
+  workflow.type = "STAR - Counts",
+  sample.type = c("Primary Tumor", "Solid Tissue Normal"))
+
+cptac.query.2 <- cptac.query
+tmp <- cptac.query.2$results[[1]]
+tmp <- tmp[!duplicated(tmp$sample.submitter_id), ]
+cptac.query.2$results[[1]] <- tmp
+rm(tmp)
+```
+We are aware of the other sample types beside "Primary Tumor" and "Solid Tissue Normal", but when trying to run line 112 with all the samples types, we encountered an error:
+"Error in checkBarcodeDefinition(sample.type) : 
+  Primary Tumor;Primary Tumor;Primary Tumor was not found. Please select a difinition from the table above"
+We got this error for every other sample type. 
+After debugging for a while we have decided we have more than enough samples in both types.
+
+- Take a look at the results
+```{r}
+cptac.query.2$results[[1]]
+```
+
+- Download the data
+```{r}
+GDCdownload(cptac.query.2, directory = "C:/Users/Amit_g/OneDrive - Technion/Documents/Bioinformatics_Final_Project")
+```
+
+- Prepare data
+```{r}
+cptac.data <- GDCprepare(cptac.query.2, directory = "C:/Users/Amit_g/OneDrive - Technion/Documents/Bioinformatics_Final_Project")
+```
+
+- Explore results
+```{r}
+temp <- cptac.data
+str(temp)
+head(temp)
+summary(temp)
+```
+
+```{r}
+table(colData(cptac.data)$tobacco_smoking_status, useNA = "always")
+```
+
+```{r}
+table(colData(cptac.data)$tissue_or_organ_of_origin)
+```
+
+- Drop unknown and NAs and filter the data to our needs:
+(1) Only samples from lung cancer patients
+(2) remove samples with partial/no information about smoking habits: 
+    Current Reformed Smoker, Duration Not Specified and Smoking history not documented
+
+```{r}
+# Filter data based on our needed criteria
+
+tissue <- c( "Lower lobe, lung",
+             "Lung, NOS",
+             "Middle lobe, lung",
+             "Upper lobe, lung")
+statuses <- c( "Current Reformed Smoker for < or = 15 yrs",
+               "Current Reformed Smoker for > 15 yrs",
+               "Lifelong Non-Smoker",
+               "Current Smoker")
+
+filtered_data <- cptac.data[, colData(cptac.data)$tissue_or_organ_of_origin %in% tissue &
+                              colData(cptac.data)$tobacco_smoking_status %in% statuses]
+filtered_data <- filtered_data[, !is.na(colData(filtered_data)$tobacco_smoking_status)]
+
+# Verify the filtered data
+head(filtered_data)
+
+nsclc.data <-filtered_data
+rm(filtered_data)
+rm(cptac.data)
+```
+- Verify the filtered results
+```{r}
+table(colData(nsclc.data)$tobacco_smoking_status, useNA = "always")
+table(colData(nsclc.data)$tissue_or_organ_of_origin)
+```
+
+We will analyze two different subset: 
+1. Solid Tissue Normal 
+2. Primary Tumor 
+```{r}
+# Subset for "Solid Tissue Normal"
+nsclc.data.normal <- nsclc.data[, colData(nsclc.data)$sample_type == "Solid Tissue Normal"]
+
+# Subset for "Primary Tumor"
+nsclc.data.tumor <- nsclc.data[, colData(nsclc.data)$sample_type == "Primary Tumor"]
+```
+
+```{r}
+table(colData(nsclc.data.normal)$sample_type)
+table(colData(nsclc.data.tumor)$sample_type)
+```
+# Differential gene expression analysis with with DESeq2 For The lung cancer dataset
+
+- Construct a DESeq2 object
+  We want to investigate which genes are different between reformed smokers and non-smokers, between     
+  reformed smokers and current smokers, and between reformed smokers for over 15 years and reformed 
+  smokers for 15 years or less, so our factor of interest is tobacco smoking duration.
+  we will examine each experiment on normal tissues and on primary tumors. 
+  (DESeqDataSet will turn assays into counts and set smoking status as a factor, that is why we did not
+  do it manually)
+  
+  ## Solid Tissue Normal 
+  ----Add your code-----
+  
+  ## Primary Tumor  
+  ----Add your code-----
