@@ -184,6 +184,124 @@ table(colData(nsclc.data)$tobacco_smoking_status, useNA = "always")
 table(colData(nsclc.data)$tissue_or_organ_of_origin)
 ```
 
+Lets take a look on the tumor stages:
+```{r}
+table(colData(nsclc.data)$ajcc_pathologic_stage, useNA = "always")
+```
+
+The tumor_stage variable that TCGA provides for this tumor contains both stages and sub-stages, eg stage IIIA or stage IVB. We want to join together the sub-stages, to increase the group size and reduce complexity (and thus increase the power of the logrank statistics).
+```{r}
+# remove any of the numbers "1", "2" or "3", but only if they are at the end of the name
+# eg "Stage IA2" would become simply "Stage IA"
+colData(nsclc.data)$ajcc_pathologic_stage = gsub("[123]$", "", colData(nsclc.data)$ajcc_pathologic_stage)
+
+# remove any of the letters "A", "B" or "C", but only if they are at the end of the name
+# eg "stage IIIA" would become simply "stage III"
+colData(nsclc.data)$ajcc_pathologic_stage = gsub("[ABC]$", "", colData(nsclc.data)$ajcc_pathologic_stage)
+
+# verify the results as expected
+table(colData(nsclc.data)$ajcc_pathologic_stage)
+```
+Continue with that road, lets examine the following fields:
+1) cigarettes per day
+2) years smoked
+3) packs per year
+
+```{r}
+selected_columns <- colData(nsclc.data)[, c('tobacco_smoking_status','cigarettes_per_day','pack_years_smoked', 'years_smoked')]
+# Display the table using DT
+as.data.frame(selected_columns)
+```
+We can see that for non-smokers, those fields are NAs. We will turn those values to 0 instead for conducting several experiments according to this parameters. 
+Furthermore, We will divide them into groups. 
+
+1. for cigarettes per day: those who never smoked in their lives, those who smoked between 1 to 25, and those who smoked more then 25 cigarettes per day.
+
+2. for years smoked: those who never smoked in their lives, those who smoked between 1 to 35, and those who smoked more then 35 years. 
+
+3. for pack years smoked: those who never smoked in their lives, those who smoked between 1 to 40, and those who smoked more then 40 packs.
+
+```{r}
+# Extract the column data and convert to data.frame
+col_data <- as.data.frame(colData(nsclc.data))
+```
+```{r}
+# Update for non-smokers cigarettes_per_day, years_smoked column, pack_years_smoked to zero
+col_data <- col_data %>%
+  mutate(cigarettes_per_day = case_when(
+    tobacco_smoking_status == "Lifelong Non-Smoker" ~ 0,
+    TRUE ~ cigarettes_per_day  # Keep the original value otherwise
+  ),
+    years_smoked = case_when(
+    tobacco_smoking_status == "Lifelong Non-Smoker" ~ 0,
+    TRUE ~ years_smoked  # Keep the original value otherwise
+    ),
+  
+    pack_years_smoked = case_when(
+    tobacco_smoking_status == "Lifelong Non-Smoker" ~ 0,
+    TRUE ~ pack_years_smoked  # Keep the original value otherwise
+    )
+  )
+```
+```{r}
+# dividing into groups
+
+# Convert to character type
+col_data$cigarettes_per_day <- as.character(col_data$cigarettes_per_day)
+col_data$years_smoked <- as.character(col_data$years_smoked)
+col_data$pack_years_smoked <- as.character(col_data$pack_years_smoked)
+
+# Use mutate with case_when
+col_data <- col_data %>%
+  mutate(
+    cigarettes_per_day_thr = case_when(
+      cigarettes_per_day == "0"   ~ "none",
+      cigarettes_per_day <  25    ~ "less than 25",
+      cigarettes_per_day >= 25    ~ "more than 25",
+      is.na(cigarettes_per_day)  ~ NA_character_
+    ),
+      years_smoked_thr = case_when(
+      years_smoked == "0"   ~ "none",
+      years_smoked <  35    ~ "less than 35",
+      years_smoked >= 35    ~ "more than 35",
+      is.na(years_smoked)  ~ NA_character_
+    ),
+      pack_years_smoked_thr = case_when(
+      pack_years_smoked == "0"   ~ "none",
+      pack_years_smoked <  40    ~ "less than 40",
+      pack_years_smoked >= 40    ~ "more than 40",
+      is.na(pack_years_smoked)  ~ NA_character_
+    )
+  )
+
+```
+
+```{r}
+# Convert back to DFrame
+col_data <- as(col_data, "DFrame")
+
+# Assign the modified data back to the colData
+colData(nsclc.data) <- col_data
+```
+```{r}
+# verify resuts as expected
+table(colData(nsclc.data)$cigarettes_per_day_thr)
+table(colData(nsclc.data)$years_smoked_thr)
+table(colData(nsclc.data)$pack_years_smoked_thr)
+```
+
+```{r}
+colData(nsclc.data) <- colData(nsclc.data) %>%
+  mutate(cigarettes_per_day = case_when(
+    cigarettes_per_day ==    ~ 0,
+    cigarettes_per_day <  20  ~ "less then 20",
+    cigarettes_per_day >= 20  ~ "more then 20",
+    is.na(cigarettes_per_day) ~ NA_character_
+  ))
+```
+
+
+
 We will analyze two different subset: 
 1. Solid Tissue Normal 
 2. Primary Tumor 
