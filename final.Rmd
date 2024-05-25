@@ -2499,3 +2499,1469 @@ significant_results
 ```
 We received 0 significant pathways for the intersection.
 Though this kind of result might indicate on a troublesome analysis, there are many possible reasons for it, and it's not uncommon to get one hallmark for such a small number of genes (9).
+
+### Solid Tissue Normal 
+
+- Perform DE analysis with DESeq2
+```{r}
+nsclc.normal.dds <- DESeqDataSet(nsclc.data.normal, design = ~tobacco_smoking_status)
+nsclc.normal.dds <- DESeq(nsclc.normal.dds)
+```
+
+- Take a look at the gene counts data (just to get an idea)
+```{r}
+normal.counts_matrix <- counts(nsclc.normal.dds)
+View(normal.counts_matrix)
+write.csv(counts_matrix_normal, "normal.counts_matrix.csv")
+```
+
+### Analyze differential gene expression results
+
+- Getting differential expression results: 
+```{r}
+res <- results(nsclc.normal.dds)
+mcols(res, use.names=T)
+summary(res)
+```
+
+
+- For shrinking log fold-change we need to know the 'name' of the analysis we 
+  want to shrink its results.
+```{r}
+resultsNames(nsclc.normal.dds)
+```
+
+-------------------------------------------------------------------------------------------------------
+### First We will perform an analysis for Lifelong non-smoker vs.Current reformed smoker for <= 15 years
+-------------------------------------------------------------------------------------------------------
+
+- First We will filter genes based on the LFC value - Log Fold Change
+```{r}
+# Shrink LFC 
+resLFC.1 <- lfcShrink(nsclc.normal.dds, coef="tobacco_smoking_status_Lifelong.Non.Smoker_vs_Current.Reformed.Smoker.for...or...15.yrs", type="apeglm")
+```
+
+Our genes are coded in ENSEMBLID, they need to be converted to conventional symbols.
+- Adding a column to the results table with the gene's symbols
+```{r}
+# Map gene symbols to the ENSEMBL gene IDs from our data
+resLFC.1$symbol <- mapIds(org.Hs.eg.db,
+                        keys=gsub("\\..*", "", rownames(resLFC.1)),
+                        column="SYMBOL",
+                        keytype="ENSEMBL",
+                        multiVals="first") # multiVals: what should mapIds do when there are multiple values that could be returned?
+```
+
+- Order the results by pvalue:
+```{r}
+resOrdered.1 <- resLFC.1[order(resLFC.1$pvalue),]
+resOrdered.1
+```
+
+- And finally save our results to CSV so we can take a deeper look in excel:
+```{r}
+write.csv(resOrdered.1, "signif_results_1.csv")
+```
+
+### Visualization of gene expression of Normal case 1
+
+- Individual genes:
+Let start by looking at the first gene - SYTL5:
+```{r}
+i.1 <- which(resOrdered.1$symbol=='SYTL5')
+resOrdered.1[i.1,]
+```
+
+A DESeq2 function that can let us extract the normalized values of gene LINC01206:
+```{r}
+d.1 <- plotCounts(nsclc.normal.dds, gene=rownames(resOrdered.1)[i.1], intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c("Lifelong Non-Smoker", "Current Reformed Smoker for < or = 15 yrs")
+d.1 <- d.1[d.1$tobacco_smoking_status %in% selected_statuses, ]
+d.1
+```
+
+- boxplot for the SYTL5 gene
+```{r}
+ggplot(d.1[d.1$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + 
+  labs(title = "SYTL5 Expression by Smoking Status",
+       x = "Tobacco Smoking Status",
+       y = "Count",
+       fill = "Smoking Status",
+       color = "Smoking Status") +  # Add labels for axes and legend
+  theme_minimal() +  # Use a minimal theme
+  theme(axis.text.x = element_text(size = 8),  # Rotate x-axis labels
+        plot.title = element_text(hjust = 0.5))  # Center the plot title
+```
+We see that the expression of the SYTL5 gene in people who had smoked and stopped is pretty low, while in people who have never smoked it is relatively high (there is a tail of outlieras in both groups, but, as we did in class, we disregard them).
+So SYTL5 is upregulated in individuals who have never smoked.
+SYTL5 is involved in the regulation of vesicle trafficking, specifically in the context of exocytosis. It plays a role in the movement of vesicles containing proteins and lipids to the cell membrane, where they can be released into the extracellular environment or integrated into the cell membrane.
+
+The elevated expression of SYTL5 in lifelong non-smokers might indicate a protective role in maintaining normal cellular functions and membrane dynamics.
+Higher levels of SYTL5 could contribute to the stability and proper functioning of vesicle trafficking systems, ensuring efficient delivery of essential proteins and lipids to the cell membrane.
+The downregulation in reformed smokers may reflect lingering effects of smoking on cellular mechanisms, even after cessation.
+Reduced levels of SYTL5 might be associated with impaired vesicle trafficking and membrane dynamics, potentially leading to cellular stress or dysfunction.
+
+Conclusion:
+The differential expression of SYTL5 between lifelong non-smokers and short-termed reformed smokers suggests that SYTL5 might play a significant role in maintaining normal cellular functions, particularly in vesicle trafficking and membrane dynamics. The elevated expression in non-smokers likely supports effective cellular operations and homeostasis, while the downregulation in reformed smokers may indicate cellular adaptation or residual dysfunction following smoking cessation.
+
+We tried boxplotting genes 1-20, and the largest difference appeared on gene number 7.
+
+- Lets take a look at the gene at the 7th index
+```{r}
+resOrdered.1[7,]
+```
+Typically, a gene is considered significantly differentially expressed if the adjusted p-valueis below a certain threshold, often 0.05. 
+In our case, the adjusted p-value for GPR15 is 2.48058e-07, which is much lower than 0.05, indicating that the differential expression is statistically significant.
+
+- Get GPR15 data 
+```{r}
+d.1 <- plotCounts(nsclc.normal.dds, gene=rownames(resOrdered.1)[7], intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c("Lifelong Non-Smoker", "Current Reformed Smoker for < or = 15 yrs")
+d.1 <- d.1[d.1$tobacco_smoking_status %in% selected_statuses, ]
+d.1
+```
+- boxplot for the GPR15 gene 
+```{r}
+ggplot(d.1[d.1$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + 
+  labs(title = "GPR15 Expression by Smoking Status",
+       x = "Tobacco Smoking Status",
+       y = "Count",
+       fill = "Smoking Status",
+       color = "Smoking Status") +  # Add labels for axes and legend
+  theme_minimal() +  # Use a minimal theme
+  theme(axis.text.x = element_text(size = 8),  # Rotate x-axis labels
+        plot.title = element_text(hjust = 0.5))  # Center the plot title
+```
+
+- We see that the expression of the GPR15 gene in people who had smoked and stopped is pretty high, while in people who have never smoked it is relatively low (there is a tail of outliers who had never smoked that also have a high expression of this gene, but, as we did in class, we disregard them).
+So GPR15 is upregulated in individuals who have quit smoking.
+
+GPR15 is involved in immune responses and has been identified as a receptor for various chemokines. It is known for its role in the homing and migration of lymphocytes, particularly to the gut and potentially other mucosal tissues.
+GPR15 directs the migration of specific subsets of immune cells to target tissues.
+By guiding immune cells, GPR15 influences local immune responses and inflammation.
+
+The upregulation of GPR15 in reformed smokers suggests alterations in immune cell trafficking and potentially heightened immune surveillance or inflammatory responses.
+Smoking and its cessation may induce lasting changes in the immune system, and the increased expression of GPR15 could be a marker of such changes.
+Lifelong non-smokers may have baseline levels of GPR15 expression that reflect normal immune cell trafficking and a balanced immune response, in contrast, the elevated levels in reformed smokers might indicate residual inflammation or an ongoing immune response as the body adjusts after smoking cessation.
+
+Cobnclusion:
+Increased GPR15 expression might lead to enhanced recruitment of immune cells to mucosal tissues, which could be a response to previous damage caused by smoking. Lower expression levels suggest a stable and possibly less active immune cell trafficking compared to reformed smokers.
+The upregulation of GPR15 could be associated with a heightened inflammatory state as the body attempts to repair and recover from the effects of smoking.
+Lower GPR15 levels are indicative of a more controlled inflammatory response, reflecting an absence of smoking-induced immune activation.
+
+- Keep sample names for those with top and bottom quartiles of CEL for survival analysis
+```{r}
+quartiles.1 <- quantile(d.1[d.1$tobacco_smoking_status == "Lifelong Non-Smoker",]$count, probs = c(0.25, 0.75))
+quartiles.1
+low.1 <- rownames(d.1[d.1$tobacco_smoking_status == "Lifelong Non-Smoker" & d.1$count <= quartiles.1[1],])
+high.1 <- rownames(d.1[d.1$tobacco_smoking_status == "Lifelong Non-Smoker" & d.1$count >= quartiles.1[2],])
+```
+* We save the lower quartile and the upper quartile, and the samples that correspond to them, for the survival analysis later
+
+```{r}
+write.csv(low.1, file = "GPR15.low1.csv", row.names = FALSE)
+write.csv(high.1, file = "GPR15.high1.csv", row.names = FALSE)
+```
+
+### Visualization of gene expression for multiple genes
+
+- Volcano Plot
+```{r}
+EnhancedVolcano(resLFC.1,
+                lab = resLFC.1$symbol,
+                x = 'log2FoldChange',
+                y = 'padj',
+                labSize=3,
+                FCcutoff = 1.0,
+                pCutoff = 1e-05)
+```
+* P-values are naturally very small.
+We take Log to increase and plot them on the y-axis, and negate them to make them positive, 
+which will be easier to look at.
+
+* Right Side (Positive LFC): Represents genes that are more highly expressed in Reformed Smokers compared to Lifelong Non-Smokers.
+Left Side (Negative LFC): Represents genes that are less expressed in Reformed Smokers compared to Lifelong Non-Smokers.
+
+-We are interested in genes that are the most significant (that is, as high as possible on the y-axis), and that have the greatest Fold Change (that is, as far to the left or right as possible).
+LFC cutoff is 1, so everything that is to the right of 2 or to the left of -2 is colored differently.
+P-value cutoff is 1e-05, so everything above it is also colored differently
+
+We will define our significance thresholds to be:
+-log10p >= 5
+- -1 <= LFC <=1
+```{r}
+# Define the significance thresholds
+pvalue_threshold <- 5^(-10)
+log2fc_threshold <- 1
+
+resLFC_df.1 <- as.data.frame(resLFC.1)
+
+# Filter the data for significant genes
+significant_genes.1 <- resLFC_df.1 %>%
+  filter(padj < pvalue_threshold & abs(log2FoldChange) > log2fc_threshold)
+```
+
+View and save significant genes for farther analysis and deeper look:
+```{r}
+significant_genes.1
+write.csv(significant_genes.1, "significant_genes_1.csv")
+```
+  ### Observations from Significant Genes in Case 1:
+
+Key significant Genes and Their Potential Roles:
+1. ZIC2 ________
+2. MT1G ____________
+3. SYTL5 _______________ 
+4. LOC124900476 _____________
+
+Conclusion: 
+____________________
+  
+  
+- We would like to continue and look at the results from some other angles
+
+### We can also visualize multiple genes with a heatmap:
+```{r}
+# Take top 10 genes with the lowest p-value that are unregulated in Reformed Smokers (log2FoldChange > 0)
+selectUp <- resOrdered.1$symbol[resOrdered.1$log2FoldChange > 0][1:10]
+# Take top 10 genes with the lowest p-value that are unregulated in Lifelong Non-Smokers (log2FoldChange < 0)
+selectDown <- resOrdered.1$symbol[resOrdered.1$log2FoldChange < 0][1:10]
+select <- c(selectUp, selectDown)
+
+dds <- nsclc.normal.dds
+
+# Map ENSEMBL IDs to gene symbols
+gene_symbols <- mapIds(org.Hs.eg.db,
+                       keys = gsub("\\..*", "", rownames(dds)),
+                       column = "SYMBOL",
+                       keytype = "ENSEMBL")
+
+# Check for missing mappings and adjust if necessary
+missing_mappings <- is.na(gene_symbols)
+if (any(missing_mappings)) {
+  warning(paste(sum(missing_mappings), "ENSEMBL IDs were not mapped to gene symbols."))
+  gene_symbols[missing_mappings] <- rownames(dds)[missing_mappings]
+}
+
+# Assign the gene symbols to the row names
+rownames(dds) <- gene_symbols
+
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Lifelong Non-Smoker", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(dds)$tobacco_smoking_status %in% desired_status
+dds_subset <- dds[, subset_samples]
+
+# Update the annotation data frame
+df <- data.frame(row.names = colnames(dds_subset),
+                 status = colData(dds_subset)$tobacco_smoking_status)
+                  
+#nsclc.data$primary_diagnosis
+# Ensure selected genes are in the subset
+select <- select[select %in% rownames(dds_subset)]
+
+# Get normalized counts
+normcounts <- assay(vst(dds_subset, blind = TRUE))
+
+# Plot heatmap
+pheatmap(normcounts[select, ],
+         cluster_rows = TRUE,
+         show_colnames = FALSE,
+         cluster_cols = TRUE,
+         annotation_col = df,
+         scale = 'row',
+         cutree_cols = 2,
+         cutree_rows = 2)
+```
+We have a lot of samples so it is a bit hard to see the clusters.
+
+-Let us zoom in: we will cluster the samples based on similarity in gene expression profiles. This will group similar samples together and make it easier to identify patterns.
+```{r}
+# Perform sample clustering
+sample_dist <- dist(t(normcounts))
+sample_clusters <- hclust(sample_dist)
+sample_order <- sample_clusters$order
+```
+
+```{r}
+# Select a subset of samples for visualization
+num_samples_to_display <- 20
+subset_samples <- sample_order[1:num_samples_to_display]
+
+# Plot the heatmap with sample clustering and subsetting
+pheatmap(normcounts[select, subset_samples],
+         cluster_rows=TRUE,
+         show_colnames = FALSE, 
+         cluster_cols=TRUE, 
+         annotation_col=df, 
+         scale = 'row', 
+         cutree_cols = 2, 
+         cutree_rows = 2)
+
+```
+#### Heatmap Observations for Clustered Samples in Case 1:
+_________________________________________________________
+
+### To visualized relations between samples we can use PCA
+* simplify our complex datasets by reducing their dimensionality while retaining most of the variation present in the dataset
+
+First, lets prepare the data
+```{r}
+pca_dds.symbol <- nsclc.normal.dds
+
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Lifelong Non-Smoker", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(pca_dds.symbol)$tobacco_smoking_status %in% desired_status
+pca_dds.symbol <- pca_dds.symbol[, subset_samples]
+```
+
+lets find 1000 most variable genes:
+```{r}
+# Normalize the counts
+normcounts = assay(vst(pca_dds.symbol, blind=TRUE))
+
+# Calculate the variance per gene and select the top 1000 variable genes
+var_per_gene <- apply(normcounts, 1, var)
+selectedGenes <- names(var_per_gene[order(var_per_gene, decreasing = TRUE)][1:1000])
+normcounts.top1Kvar <- t(normcounts[selectedGenes, ])
+```
+
+- Run and plot PCA by smoking status:
+```{r}
+# Perform PCA
+pcaResults = prcomp(normcounts.top1Kvar)
+```
+```{r}
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$tobacco_smoking_status, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Tobacco Smoking Status") +
+  theme_minimal()
+```
+What we see here??
+___________________________________________
+
+- by cigarettes smoked per day:
+```{r}
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$cigarettes_per_day_thr, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Cigarettes Per Day") +
+  theme_minimal()
+```
+What we see here??
+______________________________________________
+
+- By pathological stage
+```{r}
+ggplot(data.frame(PC1 = pcaResults$x[,1], PC2 = pcaResults$x[,2], 
+                  Stage = colData(pca_dds.symbol)$ajcc_pathologic_stage)) +
+  geom_point(aes(x = PC1, y = PC2, color = Stage), size = 2, alpha = 0.6) +
+  labs(x = "PC-1", y = "PC-2", color = "AJCC Pathologic Stage") +
+  theme_minimal() +
+  scale_color_viridis_d()  # Use a discrete color scale from the viridis package
+```
+What we see here??
+______________________________________________
+
+- By Primary Diagnosis:
+```{r}
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$primary_diagnosis, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Primary Diagnosis") +
+  theme_minimal()
+```
+What we see here??
+______________________________________________
+
+#### PCA results and Conclusions:
+______________________________________________
+
+Next, we will perform GSEA to understand the broader biological context and interactions among significant genes.
+
+### GSEA - case 1
+- Filter significant genes and remove NA from the first case
+```{r}
+filter.sgn.genes.1 <- resOrdered.1
+filter.sgn.genes.1.nona <- filter.sgn.genes.1[!is.na(filter.sgn.genes.1$padj),]
+filter.sgn.genes.1.nona <- filter.sgn.genes.1.nona[filter.sgn.genes.1.nona$padj < 0.05, ]
+filter.sgn.genes.1.nona
+```
+- Next we need to create an ordered vector by the log fold change with the gene 
+  symbols as names:
+```{r}
+# Convert DESeqResults object to a data frame
+filter.first_df <- as.data.frame(filter.sgn.genes.1.nona)
+
+# Remove rows with NA in the symbol column
+filtered_data_1 <- filter.first_df %>%
+  filter(!is.na(symbol))
+
+# Average log2FoldChange for duplicate gene symbols
+unique_genes <- filtered_data_1 %>%
+  group_by(symbol) %>%
+  summarize(log2FoldChange = mean(log2FoldChange, na.rm = TRUE)) %>%
+  ungroup()
+
+# Order the unique genes by log2FoldChange in descending order
+unique_genes_ordered_1 <- unique_genes %>%
+  arrange(desc(log2FoldChange))
+
+# Create a named vector with log2FoldChange values and gene symbols as names
+genes_ordered_1 <- setNames(unique_genes_ordered_1$log2FoldChange, unique_genes_ordered_1$symbol)
+
+genes_ordered_1
+```
+- For the hallmarks pathways gene sets we'll use msigdbr package.
+```{r}
+# Load hallmark gene sets
+hallmarks_1 <- msigdbr(species = "Homo sapiens", category = "H")
+hallmarks_list_1 <- split(hallmarks_1$gene_symbol, hallmarks_1$gs_name)
+```
+- view hallmark data 
+```{r}
+# Get all genes in hallmarks_list
+all_genes_in_hallmarks_1 <- unique(unlist(hallmarks_list_1))
+
+# Get gene identifiers in genes_ordered
+genes_in_ordered_1 <- names(genes_ordered_1)
+
+# Check overlap
+overlap_genes_1 <- intersect(all_genes_in_hallmarks_1, genes_in_ordered_1)
+
+# Summary of the overlap
+cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks_1), "\n")
+cat("Number of genes in genes_ordered:", length(genes_in_ordered_1), "\n")
+cat("Number of overlapping genes:", length(overlap_genes_1), "\n")
+
+```
+We received 408  overlapping genes.
+
+- Using GSEA() as done in class
+```{r}
+# Run GSEA
+set.seed(123)  # Set seed for reproducibility
+gsea_results_1 <- fgsea(pathways = hallmarks_list_1, 
+                      stats = genes_ordered_1, 
+                      minSize = 15, 
+                      maxSize = 500)
+gsea_results_1
+# Convert results to a data frame
+gsea_results_df_1 <- as.data.frame(gsea_results_1)
+# Filter significant results (e.g., padj < 0.05)
+significant_results_1 <- gsea_results_df_1 %>% filter(padj < 0.05)
+significant_results_1
+```
+we got 3 pathways!
+
+- Visualizing the results
+```{r}
+# Create a dot plot of significant pathways
+ggplot(significant_results_1, aes(x = reorder(pathway, NES), y = NES)) +
+  geom_point(aes(size = -log10(padj), color = NES)) +
+  coord_flip() +
+  labs(x = "Pathway", y = "Normalized Enrichment Score (NES)", 
+       title = "GSEA Results", size = "-log10(padj)", color = "NES") +
+  theme_minimal()
+
+```
+
+Results and conclusions:
+_____________________________________________________
+
+----------------------------------------------------------------------------------
+## Next We will perform a similar analysis for Current Smokers vs. Reformed Smoker
+----------------------------------------------------------------------------------
+
+- Current smoker vs. Current reformed smoker for <= 15 years
+```{r}
+resLFC.2 <- lfcShrink(nsclc.normal.dds, coef="tobacco_smoking_status_Current.Smoker_vs_Current.Reformed.Smoker.for...or...15.yrs", type="apeglm")
+resLFC.2$symbol <- mapIds(org.Hs.eg.db,
+                        keys=gsub("\\..*", "", rownames(resLFC.2)),
+                        column="SYMBOL",
+                        keytype="ENSEMBL",
+                        multiVals="first") 
+```
+- Order the results by pvalue:
+```{r}
+resOrdered.2 <- resLFC.2[order(resLFC.2$pvalue),]
+resOrdered.2
+```
+- And finally save our results to CSV so we can take a deeper look in excel:
+```{r}
+write.csv(resOrdered.2, "signif_results_2.csv")
+```
+
+### Visualization of gene expression 2
+
+- Lets take a look at the first gene CYP1A1 
+```{r}
+i.2 <- which(resOrdered.2$symbol=='CYP1A1')
+resOrdered.2[i.2,]
+```
+- Extract the normalized values of the gene of CYP1A1:
+```{r}
+d.2 <- plotCounts(nsclc.normal.dds, gene=rownames(resOrdered.2)[i.2], intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c("Current Smoker", "Current Reformed Smoker for < or = 15 yrs")
+d.2 <- d.2[d.2$tobacco_smoking_status %in% selected_statuses, ]
+d.2
+``` 
+-boxplot for CYP1A1:
+```{r}
+ggplot(d.2[d.2$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + 
+  labs(title = "CYP1A1 Expression by Smoking Status",
+       x = "Tobacco Smoking Status",
+       y = "Count",
+       fill = "Smoking Status",
+       color = "Smoking Status") +  # Add labels for axes and legend
+  theme_minimal() +  # Use a minimal theme
+  theme(axis.text.x = element_text(size=8),  # Rotate x-axis labels
+        plot.title = element_text(hjust = 0.5))  # Center the plot title
+```
+We can see a difference between the counts of those who still smoking and the ones that
+had smoked and stopped.
+We tried boxplotting genes 1-20, and the largest difference appeared on gene number 9.
+- Lets take a look at the gene at the 16th index
+```{r}
+resOrdered.2[9,]
+```
+We can see the adjusted p-value for HES2 is 2.2491e-11, which is much lower than 0.05, indicating that the differential expression is statistically significant.
+
+- Extract the normalized values of the gene of HES2
+```{r}
+d.2 <- plotCounts(nsclc.normal.dds, gene=rownames(resOrdered.2)[9], intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c("Current Smoker", "Current Reformed Smoker for < or = 15 yrs")
+d.2 <- d.2[d.2$tobacco_smoking_status %in% selected_statuses, ]
+d.2
+``` 
+```{r}
+ggplot(d.2[d.2$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + 
+  labs(title = "HES2 Expression by Smoking Status",
+       x = "Tobacco Smoking Status",
+       y = "Count",
+       fill = "Smoking Status",
+       color = "Smoking Status") +  # Add labels for axes and legend
+  theme_minimal() +  # Use a minimal theme
+  theme(axis.text.x = element_text(size = 8),  # Rotate x-axis labels
+        plot.title = element_text(hjust = 0.5))  # Center the plot title
+```
+- We can see that the expression of the HES2 gene in people who still smoking is higher then those who stopped.
+The upregulation of HES2 in current smokers compared to smokers who quit suggests that this gene may play a role in the biological processes associated with smoking cessation. 
+
+- What is the HES2?
+_______________________________________________
+
+- Keep sample names for those with top and bottom quartiles of WSCD2 for later
+```{r}
+quartiles.2 <- quantile(d.2[d.2$tobacco_smoking_status == "Current Reformed Smoker for < or = 15 yrs",]$count, probs = c(0.25, 0.75))
+quartiles.2
+low.2 <- rownames(d.2[d.2$tobacco_smoking_status == "Current Reformed Smoker for < or = 15 yrs" & d.2$count <= quartiles.2[1],])
+high.2 <- rownames(d.2[d.2$tobacco_smoking_status == "Current Reformed Smoker for < or = 15 yrs" & d.2$count >= quartiles.2[2],])
+```
+* We save the lower quartile and the upper quartile, and the samples that correspond to them, for the survival analysis later
+```{r}
+write.csv(low.2, file = "HES2.low2.csv", row.names = FALSE)
+write.csv(high.2, file = "HES2.high2.csv", row.names = FALSE)
+```
+
+### Visualization of gene expression for multiple genes
+
+- Volcano Plot
+```{r}
+EnhancedVolcano(resLFC.2,
+                lab = resLFC.2$symbol,
+                x = 'log2FoldChange',
+                y = 'padj',
+                labSize=3)
+```
+* Right Side: Genes with positive LFC are upregulated in the group specified first in Current Smokers.
+Left Side: Genes with negative LFC are upregulated in the group specified second in Current Reformed Smokers.
+
+We will define our significance thresholds to be the default ones:
+-log10p >= 5
+-1.5 <= LFC <=1.5
+```{r}
+# Define the significance thresholds
+pvalue_threshold.2 <- 10^(-5)
+log2fc_threshold.2 <- 1.5
+
+resLFC_df.2 <- as.data.frame(resLFC.2)
+
+# Filter the data for significant genes
+significant_genes.2 <- resLFC_df.2 %>%
+  filter(padj < pvalue_threshold.2 & abs(log2FoldChange) > log2fc_threshold.2)
+```
+
+View and save significant genes for farther analysis and deeper look:
+```{r}
+significant_genes.2
+write.csv(significant_genes.2, "significant_genes_2.csv")
+```
+### Observations from Significant Genes in Case 2:
+
+Key Significant Genes and Their Potential Roles:
+1. ZIC2 - *also cum up in case 1* 
+2. ALDH3A1 _________
+3. CYP1A1 ____________
+4. MTND1P23 _________
+
+Conclusion:
+____________________
+
+### visualize multiple genes with a heatmap:
+```{r}
+# Take top 10 genes with the lowest p-value that are unregulated in Reformed Smokers (log2FoldChange > 0)
+selectUp <- resOrdered.2$symbol[resOrdered.2$log2FoldChange > 0][1:10]
+# Take top 10 genes with the lowest p-value that are unregulated in Lifelong Non-Smokers (log2FoldChange < 0)
+selectDown <- resOrdered.2$symbol[resOrdered.2$log2FoldChange < 0][1:10]
+select <- c(selectUp, selectDown)
+
+dds <- nsclc.normal.dds
+
+# Map ENSEMBL IDs to gene symbols
+gene_symbols <- mapIds(org.Hs.eg.db,
+                       keys = gsub("\\..*", "", rownames(dds)),
+                       column = "SYMBOL",
+                       keytype = "ENSEMBL")
+
+# Check for missing mappings and adjust if necessary
+missing_mappings <- is.na(gene_symbols)
+if (any(missing_mappings)) {
+  warning(paste(sum(missing_mappings), "ENSEMBL IDs were not mapped to gene symbols."))
+  gene_symbols[missing_mappings] <- rownames(dds)[missing_mappings]
+}
+
+# Assign the gene symbols to the row names
+rownames(dds) <- gene_symbols
+
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Current Smoker", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(dds)$tobacco_smoking_status %in% desired_status
+dds_subset <- dds[, subset_samples]
+
+# Update the annotation data frame
+df <- data.frame(row.names = colnames(dds_subset),
+                 status = colData(dds_subset)$tobacco_smoking_status,
+                 cigarettes = colData(dds_subset)$cigarettes_per_day_thr)
+
+# Ensure selected genes are in the subset
+select <- select[select %in% rownames(dds_subset)]
+
+# Get normalized counts
+normcounts <- assay(vst(dds_subset, blind = TRUE))
+
+# Plot heatmap
+pheatmap(normcounts[select, ],
+         cluster_rows = TRUE,
+         show_colnames = FALSE,
+         cluster_cols = TRUE,
+         annotation_col = df,
+         scale = 'row',
+         cutree_cols = 2,
+         cutree_rows = 2)
+```
+We have a lot of samples so it is a bit hard to see the clusters.
+
+-Let us zoom in: we will cluster the samples based on similarity in gene expression profiles. This will group similar samples together and make it easier to identify patterns.
+```{r}
+# Perform sample clustering
+sample_dist <- dist(t(normcounts))
+sample_clusters <- hclust(sample_dist)
+sample_order <- sample_clusters$order
+```
+
+```{r}
+# Select a subset of samples for visualization
+num_samples_to_display <- 20
+subset_samples <- sample_order[1:num_samples_to_display]
+
+# Plot the heatmap with sample clustering and subsetting
+pheatmap(normcounts[select, subset_samples],
+         cluster_rows=TRUE,
+         show_colnames = FALSE, 
+         cluster_cols=TRUE, 
+         annotation_col=df, 
+         scale = 'row', 
+         cutree_cols = 2, 
+         cutree_rows = 2)
+
+```
+#### Heatmap Observations for Clustered Samples in Case 1:
+_________________________________________________________
+
+### To visualized relations between samples we can use PCA
+
+First, lets find 1000 most variable genes:
+```{r}
+pca_dds.symbol <- nsclc.normal.dds
+
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Current Smoker", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(pca_dds.symbol)$tobacco_smoking_status %in% desired_status
+pca_dds.symbol <- pca_dds.symbol[, subset_samples]
+
+# Normalize the counts
+normcounts = assay(vst(pca_dds.symbol, blind=TRUE))
+
+# Calculate the variance per gene and select the top 1000 variable genes
+var_per_gene <- apply(normcounts, 1, var)
+selectedGenes <- names(var_per_gene[order(var_per_gene, decreasing = TRUE)][1:1000])
+normcounts.top1Kvar <- t(normcounts[selectedGenes, ])
+```
+
+- Run and plot PCA by smoking status:
+```{r}
+# Perform PCA
+pcaResults = prcomp(normcounts.top1Kvar)
+```
+```{r}
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$tobacco_smoking_status, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Tobacco Smoking Status") +
+  theme_minimal()
+```
+What we see here??
+___________________________________________
+
+- by cigarettes smoked per day:
+```{r}
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$cigarettes_per_day_thr, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Cigarettes Per Day") +
+  theme_minimal()
+```
+What we see here??
+______________________________________________
+
+- By pathological stage
+```{r}
+ggplot(data.frame(PC1 = pcaResults$x[,1], PC2 = pcaResults$x[,2], 
+                  Stage = colData(pca_dds.symbol)$ajcc_pathologic_stage)) +
+  geom_point(aes(x = PC1, y = PC2, color = Stage), size = 2, alpha = 0.6) +
+  labs(x = "PC-1", y = "PC-2", color = "AJCC Pathologic Stage") +
+  theme_minimal() +
+  scale_color_viridis_d()  # Use a discrete color scale from the viridis package
+```
+What we see here??
+______________________________________________
+
+- By Primary Diagnosis:
+```{r}
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$primary_diagnosis, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Primary Diagnosis") +
+  theme_minimal()
+```
+What we see here??
+______________________________________________
+
+#### PCA results and Conclusions:
+______________________________________________
+
+Next, we will perform GSEA to understand the broader biological context and interactions among significant genes.
+### GSEA - case 2
+
+- Filter significant genes and remove NA from the second case
+```{r}
+filter.sgn.genes.2 <- resOrdered.2
+filter.sgn.genes.2.nona <- filter.sgn.genes.2[!is.na(filter.sgn.genes.2$padj),]
+filter.sgn.genes.2.nona <- filter.sgn.genes.2.nona[filter.sgn.genes.2.nona$padj < 0.05, ]
+filter.sgn.genes.2.nona
+```
+- Next we need to create an ordered vector by the log fold change with the gene 
+  symbols as names:
+```{r}
+# Convert DESeqResults object to a data frame
+filter.second_df <- as.data.frame(filter.sgn.genes.2.nona)
+
+# Remove rows with NA in the symbol column
+filtered_data_2 <- filter.second_df %>%
+  filter(!is.na(symbol))
+
+# Average log2FoldChange for duplicate gene symbols
+unique_genes_2 <- filtered_data_2 %>%
+  group_by(symbol) %>%
+  summarize(log2FoldChange = mean(log2FoldChange, na.rm = TRUE)) %>%
+  ungroup()
+
+# Order the unique genes by log2FoldChange in descending order
+unique_genes_ordered_2 <- unique_genes_2 %>%
+  arrange(desc(log2FoldChange))
+
+# Create a named vector with log2FoldChange values and gene symbols as names
+genes_ordered_2 <- setNames(unique_genes_ordered_2$log2FoldChange, unique_genes_ordered_2$symbol)
+
+genes_ordered_2
+```
+
+- For the hallmarks pathways gene sets we'll use msigdbr package.
+```{r}
+# Load hallmark gene sets
+hallmarks_2 <- msigdbr(species = "Homo sapiens", category = "H")
+hallmarks_list_2 <- split(hallmarks_2$gene_symbol, hallmarks_2$gs_name)
+```
+- view hallmark data 
+```{r}
+# Get all genes in hallmarks_list
+all_genes_in_hallmarks_2 <- unique(unlist(hallmarks_list_2))
+
+# Get gene identifiers in genes_ordered
+genes_in_ordered_2 <- names(genes_ordered_2)
+
+# Check overlap
+overlap_genes_2 <- intersect(all_genes_in_hallmarks_2, genes_in_ordered_2)
+
+# Summary of the overlap
+cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks_2), "\n")
+cat("Number of genes in genes_ordered:", length(genes_in_ordered_2), "\n")
+cat("Number of overlapping genes:", length(overlap_genes_2), "\n")
+```
+We received 914  genes.
+
+- Using GSEA() as done in class
+```{r}
+# Run GSEA
+set.seed(123)  # Set seed for reproducibility
+gsea_results_2 <- fgsea(pathways = hallmarks_list_2, 
+                      stats = genes_ordered_2, 
+                      minSize = 15, 
+                      maxSize = 500)
+gsea_results_2
+# Convert results to a data frame
+gsea_results_df_2 <- as.data.frame(gsea_results_2)
+# Filter significant results (e.g., padj < 0.05)
+significant_results_2 <- gsea_results_df_2 %>% filter(padj < 0.05)
+significant_results_2
+```
+we got 19 pathways!
+
+- Visualizing the results
+```{r}
+# Create a dot plot of significant pathways
+ggplot(significant_results_2, aes(x = reorder(pathway, NES), y = NES)) +
+  geom_point(aes(size = -log10(padj), color = NES)) +
+  coord_flip() +
+  labs(x = "Pathway", y = "Normalized Enrichment Score (NES)", 
+       title = "GSEA Results", size = "-log10(padj)", color = "NES") +
+  theme_minimal()
+```
+Results and conclusions:
+_____________________________________________________
+
+
+---------------------------------------------------------------------------------------------
+## Last,  We will perform a similar analysis for refoemred smokers of different time durations
+---------------------------------------------------------------------------------------------
+
+- Current reformed smoker for <= 15 years vs. Current reformed smoker for > 15 years
+```{r}
+resLFC.3 <- lfcShrink(nsclc.normal.dds, coef="tobacco_smoking_status_Current.Reformed.Smoker.for...15.yrs_vs_Current.Reformed.Smoker.for...or...15.yrs" , type="apeglm")
+resLFC.3$symbol <- mapIds(org.Hs.eg.db,
+                        keys=gsub("\\..*", "", rownames(resLFC.3)),
+                        column="SYMBOL",
+                        keytype="ENSEMBL",
+                        multiVals="first") 
+```
+- Order the results by pvalue:
+```{r}
+resOrdered.3 <- resLFC.3[order(resLFC.3$pvalue),]
+resOrdered.3
+```
+- And finally save our results to CSV so we can take a deeper look in excel:
+```{r}
+write.csv(resOrdered.3, "signif_results_3.csv")
+```
+
+### Visualization of gene expression 3
+
+Lets take a look at the first gene - ZIC2:
+```{r}
+i.3 <- which(resOrdered.3$symbol=='ZIC2')
+resOrdered.3[i.3,]
+```
+- Extract the normalized values of the gene of ZIC2:
+```{r}
+d.3 <- plotCounts(nsclc.normal.dds, gene=rownames(resOrdered.3)[i.3], intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c("Current Reformed Smoker for > 15 yrs", "Current Reformed Smoker for < or = 15 yrs")
+d.3 <- d.3[d.3$tobacco_smoking_status %in% selected_statuses, ]
+d.3
+``` 
+- boxplot for the ALB gene
+```{r}
+ggplot(d.3[d.3$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + 
+  labs(title = "ZIC2 Expression by Smoking Status",
+       x = "Tobacco Smoking Status",
+       y = "Count",
+       fill = "Smoking Status",
+       color = "Smoking Status") +  # Add labels for axes and legend
+  theme_minimal() +  # Use a minimal theme
+  theme(axis.text.x = element_text(size = 6),  # Rotate x-axis labels
+        plot.title = element_text(hjust = 0.5))  # Center the plot title
+``` 
+As we mention, high levels of ZIC2 expression are associated with advanced tumor stage and decreased overall survival.
+We can may suppose, that people who stopped smoking, may have better survival chance due to the low level of ZIC2, and maybe quitting from cigarettes can regulate the level of ZIC2 expression.
+The outilers are probably those who have advanced tumor stage or quit smoking recently but we do not have this information to be sure. 
+
+We tried boxplotting genes 1-20, and the largest difference appeared on gene number 4.
+- Lets take a look at the gene at the 4th index
+```{r}
+resOrdered.3[4,]
+```
+In our case, the adjusted p-value for LINC01108 is 2.68252e-07, which is much lower than 0.05, indicating that the differential expression is statistically significant.
+
+- extract the normalized values of gene ATP2A1: 
+```{r}
+resOrdered.3[4,]
+d.3 <- plotCounts(nsclc.normal.dds, gene=rownames(resOrdered.3)[4], intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c("Current Reformed Smoker for > 15 yrs", "Current Reformed Smoker for < or = 15 yrs")
+d.3 <- d.3[d.3$tobacco_smoking_status %in% selected_statuses, ]
+d.3
+```
+
+- boxplot for the LINC01108 gene 
+```{r}
+ggplot(d.3[d.3$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + 
+  labs(title = "LINC01108 Expression by Smoking Status",
+       x = "Tobacco Smoking Status",
+       y = "Count",
+       fill = "Smoking Status",
+       color = "Smoking Status") +  # Add labels for axes and legend
+  theme_minimal() +  # Use a minimal theme
+  theme(axis.text.x = element_text(size = 6),  # Rotate x-axis labels
+        plot.title = element_text(hjust = 0.5))  # Center the plot title
+```
+- We see that the expression of the LINC01108 gene in people who had smoked and stopped for 15 years or less is pretty high, while in people who had smoked and stopped for more than 15 years is relatively low.
+
+LINC01108
+______________________________________
+
+
+Conclusion:
+___________________________________
+
+- Keep sample names for those with top and bottom quartiles of LINC01108 for later
+```{r}
+quartiles.3 <- quantile(d.3[d.3$tobacco_smoking_status == "Current Reformed Smoker for > 15 yrs",]$count, probs = c(0.25, 0.75))
+quartiles.3
+low.3 <- rownames(d.3[d.3$tobacco_smoking_status == "Current Reformed Smoker for > 15 yrs" & d.3$count <= quartiles.3[1],])
+high.3 <- rownames(d.3[d.3$tobacco_smoking_status == "Current Reformed Smoker for > 15 yrs" & d.3$count >= quartiles.3[2],])
+```
+* We save the lower quartile and the upper quartile, and the samples that correspond to them, for the survival analysis later
+```{r}
+write.csv(low.3, file = "LINC01108.low3.csv", row.names = FALSE)
+write.csv(high.3, file = "LINC01108.high3.csv", row.names = FALSE)
+```
+
+## Visualization of gene expression for multiple genes
+
+- Volcano Plot
+```{r}
+EnhancedVolcano(resLFC.3,
+                lab = resLFC.3$symbol,
+                x = 'log2FoldChange',
+                y = 'padj',
+                labSize=3,
+                pCutoff=1e-01,
+                FCcutoff=0.5)
+```
+* Right Side: Genes with positive LFC are upregulated in the group of reformed smokers for more than 15 years.
+Left Side: Genes with negative LFC are upregulated in the group of reformed smokers for less than or equal to 15 years.
+
+We will define our significance thresholds to be:
+-log10p >= 1
+-0.5 <= LFC <=0.5
+```{r}
+# Define the significance thresholds
+pvalue_threshold <- 10^(-1)
+log2fc_threshold <- 0.5
+
+resLFC_df.3 <- as.data.frame(resLFC.3)
+
+# Filter the data for significant genes
+significant_genes.3 <- resLFC_df.3 %>%
+  filter(padj < pvalue_threshold & abs(log2FoldChange) > log2fc_threshold)
+```
+View and save significant genes for farther analysis and deeper look:
+```{r}
+significant_genes.3
+write.csv(significant_genes.3, "significant_genes_3.csv")
+```
+### Observations from Significant Genes in Case 2:
+
+Key Significant Genes and Their Potential Roles:
+1. TEDC2 ___________
+2. MYOZ1 _________
+3. LOC124900476 ____________
+
+Conclusion:
+____________________
+
+### visualize multiple genes with a heatmap:
+```{r}
+# Take top 10 genes with the lowest p-value that are unregulated in Reformed Smokers (log2FoldChange > 0)
+selectUp <- resOrdered.3$symbol[resOrdered.3$log2FoldChange > 0][1:10]
+# Take top 10 genes with the lowest p-value that are unregulated in Lifelong Non-Smokers (log2FoldChange < 0)
+selectDown <- resOrdered.3$symbol[resOrdered.3$log2FoldChange < 0][1:10]
+select <- c(selectUp, selectDown)
+
+dds <- nsclc.normal.dds
+
+# Map ENSEMBL IDs to gene symbols
+gene_symbols <- mapIds(org.Hs.eg.db,
+                       keys = gsub("\\..*", "", rownames(dds)),
+                       column = "SYMBOL",
+                       keytype = "ENSEMBL")
+
+# Check for missing mappings and adjust if necessary
+missing_mappings <- is.na(gene_symbols)
+if (any(missing_mappings)) {
+  warning(paste(sum(missing_mappings), "ENSEMBL IDs were not mapped to gene symbols."))
+  gene_symbols[missing_mappings] <- rownames(dds)[missing_mappings]
+}
+
+# Assign the gene symbols to the row names
+rownames(dds) <- gene_symbols
+
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Current Reformed Smoker for > 15 yrs", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(dds)$tobacco_smoking_status %in% desired_status
+dds_subset <- dds[, subset_samples]
+
+# Update the annotation data frame
+df <- data.frame(row.names = colnames(dds_subset),
+                 status = colData(dds_subset)$tobacco_smoking_status,
+                 cigarettes = colData(dds_subset)$cigarettes_per_day_thr)
+
+
+# Ensure selected genes are in the subset
+select <- select[select %in% rownames(dds_subset)]
+
+# Get normalized counts
+normcounts <- assay(vst(dds_subset, blind = TRUE))
+
+# Plot heatmap
+pheatmap(normcounts[select, ],
+         cluster_rows = TRUE,
+         show_colnames = FALSE,
+         cluster_cols = TRUE,
+         annotation_col = df,
+         scale = 'row',
+         cutree_cols = 2,
+         cutree_rows = 2)
+```
+We have a lot of samples so it is a bit hard to see the clusters.
+-Let us zoom in: we will cluster the samples based on similarity in gene expression profiles. This will group similar samples together and make it easier to identify patterns.
+```{r}
+# Perform sample clustering
+sample_dist <- dist(t(normcounts))
+sample_clusters <- hclust(sample_dist)
+sample_order <- sample_clusters$order
+```
+
+```{r}
+# Select a subset of samples for visualization
+num_samples_to_display <- 20
+subset_samples <- sample_order[1:num_samples_to_display]
+
+# Plot the heatmap with sample clustering and subsetting
+pheatmap(normcounts[select, subset_samples],
+         cluster_rows=TRUE,
+         show_colnames = FALSE, 
+         cluster_cols=TRUE, 
+         annotation_col=df, 
+         scale = 'row', 
+         cutree_cols = 2, 
+         cutree_rows = 2)
+
+```
+### Heatmap Observations for Clustered Samples in Case 3:
+_________________________________________________________
+
+### PCA to visualized relations between samples
+First, lets find 1000 most variable genes:
+```{r}
+pca_dds.symbol <- nsclc.normal.dds
+
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Current Reformed Smoker for > 15 yrs", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(pca_dds.symbol)$tobacco_smoking_status %in% desired_status
+pca_dds.symbol <- pca_dds.symbol[, subset_samples]
+
+# Normalize the counts
+normcounts = assay(vst(pca_dds.symbol, blind=TRUE))
+
+# Calculate the variance per gene and select the top 1000 variable genes
+var_per_gene <- apply(normcounts, 1, var)
+selectedGenes <- names(var_per_gene[order(var_per_gene, decreasing = TRUE)][1:1000])
+normcounts.top1Kvar <- t(normcounts[selectedGenes, ])
+```
+
+Run and plot PCA by Smoking Status:
+```{r}
+# Perform PCA
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$tobacco_smoking_status, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Tobacco Smoking Status") +
+  theme_minimal()
+```
+What we see here??
+___________________________________________
+
+- by cigarettes smoked per day:
+```{r}
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$cigarettes_per_day_thr, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Cigarettes Per Day") +
+  theme_minimal()
+```
+What we see here??
+______________________________________________
+
+- By pathological stage
+```{r}
+ggplot(data.frame(PC1 = pcaResults$x[,1], PC2 = pcaResults$x[,2], 
+                  Stage = colData(pca_dds.symbol)$ajcc_pathologic_stage)) +
+  geom_point(aes(x = PC1, y = PC2, color = Stage), size = 2, alpha = 0.6) +
+  labs(x = "PC-1", y = "PC-2", color = "AJCC Pathologic Stage") +
+  theme_minimal() +
+  scale_color_viridis_d()  # Use a discrete color scale from the viridis package
+```
+What we see here??
+______________________________________________
+
+- By Primary Diagnosis:
+```{r}
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$primary_diagnosis, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Primary Diagnosis") +
+  theme_minimal()
+```
+What we see here??
+______________________________________________
+
+#### PCA results and Conclusions:
+______________________________________________
+
+### GSEA - case 3
+
+- Filter significant genes and removes NAs from third case
+```{r}
+# Filter out non-significant genes from third sace
+filter.sgn.genes.3 <- resOrdered.3
+filter.sgn.genes.3.nona <- filter.sgn.genes.3[!is.na(filter.sgn.genes.3$padj),]
+filter.sgn.genes.3.nona <- filter.sgn.genes.3.nona[filter.sgn.genes.3.nona$padj < 0.05, ]
+filter.sgn.genes.3.nona
+```
+- Next we need to create an ordered vector by the log fold change with the gene 
+  symbols as names:
+```{r}
+
+# Convert DESeqResults object to a data frame
+filter.third_df <- as.data.frame(filter.sgn.genes.3.nona)
+
+# Remove rows with NA in the symbol column
+filtered_data_3 <- filter.third_df %>%
+  filter(!is.na(symbol))
+
+# Average log2FoldChange for duplicate gene symbols
+unique_genes_3 <- filtered_data_3 %>%
+  group_by(symbol) %>%
+  summarize(log2FoldChange = mean(log2FoldChange, na.rm = TRUE)) %>%
+  ungroup()
+
+# Order the unique genes by log2FoldChange in descending order
+unique_genes_ordered_3 <- unique_genes_3 %>%
+  arrange(desc(log2FoldChange))
+
+# Create a named vector with log2FoldChange values and gene symbols as names
+genes_ordered_3 <- setNames(unique_genes_ordered_3$log2FoldChange, unique_genes_ordered_3$symbol)
+
+genes_ordered_3
+```
+- For the hallmarks pathways gene sets we'll use msigdbr package.
+```{r}
+# Load hallmark gene sets
+hallmarks_3 <- msigdbr(species = "Homo sapiens", category = "H")
+hallmarks_list_3 <- split(hallmarks_3$gene_symbol, hallmarks_3$gs_name)
+```
+- view hallmark data
+```{r}
+# Get all genes in hallmarks_list
+all_genes_in_hallmarks_3 <- unique(unlist(hallmarks_list_3))
+
+# Get gene identifiers in genes_ordered
+genes_in_ordered_3 <- names(genes_ordered_3)
+
+# Check overlap
+overlap_genes_3 <- intersect(all_genes_in_hallmarks_3, genes_in_ordered_3)
+
+# Summary of the overlap
+cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks_3), "\n")
+cat("Number of genes in genes_ordered:", length(genes_in_ordered_3), "\n")
+cat("Number of overlapping genes:", length(overlap_genes_3), "\n")
+
+```
+we received 2 genes.
+
+- Using GSEA() as done in class
+```{r}
+# Run GSEA
+set.seed(123)  # Set seed for reproducibility
+gsea_results_3 <- fgsea(pathways = hallmarks_list_3, 
+                      stats = genes_ordered_3, 
+                      minSize = 15, 
+                      maxSize = 500)
+gsea_results_3
+# Convert results to a data frame
+gsea_results_df_3 <- as.data.frame(gsea_results_3)
+# Filter significant results (e.g., padj < 0.05)
+significant_results_3 <- gsea_results_df_3 %>% filter(padj < 0.05)
+significant_results_3
+```
+we received 0 significant pathways for the third case.
+Even though this kind of result might indicate on a troublesome analysis
+it's not uncommon to get one hallmark for such a small number of genes (2).
+
+
+## Next we will preform analysis of the intersection of our 3 cases:
+INTERSECT COMMON DEGs from all 3 cases
+- We need to intersect the significant genes from all 3 cases to retrieve more reliable DEGs
+```{r}
+filter.intersect <- filter.sgn.genes.1.nona[filter.sgn.genes.1.nona$symbol %in% filter.sgn.genes.2.nona$symbol ,]
+filter.intersect <- filter.intersect[filter.intersect$symbol %in% filter.sgn.genes.3.nona$symbol ,]
+filter.intersect
+```
+- visualizing Venn diagram for common DEGs
+- prepare the data
+```{r}
+# Define the lists of genes for each category
+genes_case1 <- na.omit(filter.sgn.genes.1.nona$symbol)
+genes_case2 <- na.omit(filter.sgn.genes.2.nona$symbol)
+genes_case3 <- na.omit(filter.sgn.genes.3.nona$symbol)
+
+# Create the Venn diagram without the main title
+venn.plot <- venn.diagram(
+  x = list(
+    "Case 1" = genes_case1,
+    "Case 2" = genes_case2,
+    "Case 3" = genes_case3
+  ),
+  filename = NULL,
+  col = c("lightblue", "red", "green"),
+  fill = c("darkblue", "pink", "yellow"),
+  cat.pos = 0,          # Position the category names outside the diagram
+  cat.dist = 0.05       # Distance of category names from the circles
+)
+
+```
+
+- Plot the Venn diagram
+```{r}
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(1, 2, widths = unit(c(0.6, 0.4), "npc"))))
+pushViewport(viewport(layout.pos.col = 1))
+grid.draw(venn.plot)
+upViewport()
+
+# Add the descriptive references
+pushViewport(viewport(layout.pos.col = 2))
+grid.text("Case 1: Non-smokers vs \n reformed for <= 15 years", 
+          x = 0, y = 0.85, gp = gpar(fontsize = 10, col = "black"), just = "left")
+grid.text("Case 2: Current smokers vs \n reformed for <= 15 years", 
+          x = 0, y = 0.75, gp = gpar(fontsize = 10, col = "red"), just = "left")
+grid.text("Case 3: reformed for > 15 years vs \n reformed for <= 15 years", 
+          x = 0, y = 0.65, gp = gpar(fontsize = 10, col = "green"), just = "left")
+upViewport()
+
+```
+We can see that there are 4 overlapping significent genes acroos all 3 cases!
+
+### GSEA
+We'll use functional enrichment analysis with the Hallmark pathways gene sets for the intersected cases.
+
+- First we need to create an ordered vector by the log fold change with the gene 
+  symbols as names:
+```{r}
+# Convert DESeqResults object to a data frame
+filter.intersect_df <- as.data.frame(filter.intersect)
+
+# Remove rows with NA in the symbol column
+filtered_data <- filter.intersect_df %>%
+  filter(!is.na(symbol))
+
+# Average log2FoldChange for duplicate gene symbols
+unique_genes <- filtered_data %>%
+  group_by(symbol) %>%
+  summarize(log2FoldChange = mean(log2FoldChange, na.rm = TRUE)) %>%
+  ungroup()
+
+# Order the unique genes by log2FoldChange in descending order
+unique_genes_ordered <- unique_genes %>%
+  arrange(desc(log2FoldChange))
+
+# Create a named vector with log2FoldChange values and gene symbols as names
+genes_ordered <- setNames(unique_genes_ordered$log2FoldChange, unique_genes_ordered$symbol)
+
+genes_ordered
+```
+- For the hallmarks pathways gene sets we'll use msigdbr package.
+```{r}
+# Load hallmark gene sets
+hallmarks <- msigdbr(species = "Homo sapiens", category = "H")
+hallmarks_list <- split(hallmarks$gene_symbol, hallmarks$gs_name)
+```
+- view hallmarks data 
+```{r}
+# Summary of the overlap
+# Get all genes in hallmarks_list
+all_genes_in_hallmarks <- unique(unlist(hallmarks_list))
+
+# Get gene identifiers in genes_ordered
+genes_in_ordered <- names(genes_ordered)
+
+# Check overlap
+overlap_genes <- intersect(all_genes_in_hallmarks, genes_in_ordered)
+
+# Summary of the overlap
+cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks), "\n")
+cat("Number of genes in genes_ordered:", length(genes_in_ordered), "\n")
+cat("Number of overlapping genes:", length(overlap_genes), "\n")
+
+```
+We got 1 overlapping genes.
+
+- Using GSEA() as done in class
+```{r}
+# Run GSEA
+set.seed(123)  # Set seed for reproducibility
+gsea_results <- fgsea(pathways = hallmarks_list, 
+                      stats = genes_ordered, 
+                      minSize = 15, 
+                      maxSize = 500)
+gsea_results
+# Convert results to a data frame
+gsea_results_df <- as.data.frame(gsea_results)
+# Filter significant results (e.g., padj < 0.05)
+significant_results <- gsea_results_df %>% filter(padj < 0.05)
+significant_results
+```
+
+Unlike HW2, we got here zero Hallmark.
+As we interpret the GSEA results, we understand that we might have made some pre-processing decisions / aggregating methods / different computation of COMMON DEGs or computation of DEGs for the 3 cases that caused this result.
+In addition, though this kind of result might indicate on a troublesome analysis
+it's not uncommon to get one hallmark for such a small number of genes (1).
+
+Let us run GSEA for all cases combined.
+
+- First we need to unite the significant genes from all 3 cases to retrieve more reliable DEGs
+
+```{r}
+filter.unite <- filter.sgn.genes.1.nona[filter.sgn.genes.1.nona$symbol %in% filter.sgn.genes.2.nona$symbol ,]
+filter.unite <- filter.unite[filter.unite$symbol %in% filter.sgn.genes.3.nona$symbol ,]
+
+# Combine the filtered data frames into one (optional)
+filter.unite <- rbind(filter.sgn.genes.1.nona, filter.sgn.genes.2.nona, filter.sgn.genes.3.nona)
+
+# Remove duplicates if necessary
+filter.unite <- filter.unite[!duplicated(filter.unite$symbol),]
+filter.unite
+```
+- Next we need to create an ordered vector by the log fold change with the gene 
+  symbols as names:
+```{r}
+
+# Convert DESeqResults object to a data frame
+filter.unite_df <- as.data.frame(filter.unite)
+
+# Remove rows with NA in the symbol column
+filtered_data_u <- filter.unite_df %>%
+  filter(!is.na(symbol))
+
+# Average log2FoldChange for duplicate gene symbols
+unique_genes_u <- filtered_data_u %>%
+  group_by(symbol) %>%
+  summarize(log2FoldChange = mean(log2FoldChange, na.rm = TRUE)) %>%
+  ungroup()
+
+# Order the unique genes by log2FoldChange in descending order
+unique_genes_ordered_u <- unique_genes_u %>%
+  arrange(desc(log2FoldChange))
+
+# Create a named vector with log2FoldChange values and gene symbols as names
+genes_ordered_u <- setNames(unique_genes_ordered_u$log2FoldChange, unique_genes_ordered_u$symbol)
+
+genes_ordered_u
+```
+- For the hallmarks pathways gene sets we'll use msigdbr package.
+```{r}
+# Load hallmark gene sets
+hallmarks_u <- msigdbr(species = "Homo sapiens", category = "H")
+hallmarks_list_u <- split(hallmarks_u$gene_symbol, hallmarks_u$gs_name)
+```
+- view hallmark data 
+```{r}
+# Get all genes in hallmarks_list
+all_genes_in_hallmarks_u <- unique(unlist(hallmarks_list_u))
+
+# Get gene identifiers in genes_ordered
+genes_in_ordered_u <- names(genes_ordered_u)
+
+# Check overlap
+overlap_genes_u <- intersect(all_genes_in_hallmarks_u, genes_in_ordered_u)
+
+# Summary of the overlap
+cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks_u), "\n")
+cat("Number of genes in genes_ordered:", length(genes_in_ordered_u), "\n")
+cat("Number of overlapping genes:", length(overlap_genes_u), "\n")
+
+```
+we got 1166  genes.
+
+- Using GSEA() as done in class
+```{r}
+# Run GSEA
+set.seed(123)  # Set seed for reproducibility
+gsea_results_u <- fgsea(pathways = hallmarks_list_u, 
+                      stats = genes_ordered_u, 
+                      minSize = 15, 
+                      maxSize = 500)
+gsea_results_u
+# Convert results to a data frame
+gsea_results_df_u <- as.data.frame(gsea_results_u)
+# Filter significant results (e.g., padj < 0.05)
+significant_results_u <- gsea_results_df_u %>% filter(padj < 0.05)
+significant_results_u
+```
+we received 6 pathways.
+
+- Visualizing the results
+```{r}
+# Create a dot plot of significant pathways
+ggplot(significant_results_u, aes(x = reorder(pathway, NES), y = NES)) +
+  geom_point(aes(size = -log10(padj), color = NES)) +
+  coord_flip() +
+  labs(x = "Pathway", y = "Normalized Enrichment Score (NES)", 
+       title = "GSEA Results", size = "-log10(padj)", color = "NES") +
+  theme_minimal()
+
+```
+Results and conclusion:
+___________________________________
+
