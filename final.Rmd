@@ -802,7 +802,8 @@ pheatmap(normcounts[select, subset_samples],
 ```
 ### Heatmap Observations for Clustered Samples in Case 1:
 
-The samples cluster pretty well into two groups corresponding to the smoking status categories, indicating that the gene expression profiles are distinctly different between lifelong non-smokers and short-termed reformed smokers.
+In the hierarchical clustering for the heatmap in the first case, Euclidean distance was used to create the distance matrix, and complete linkage was used for clustering. These methods were selected because they provided the best separation of samples based on smoking status, allowing for relatively clear clusters that highlight the differences in gene expression profiles related to smoking behavior
+We can see the samples cluster pretty well into two groups corresponding to the smoking status categories.
 
 The dendrogram on the left shows improved clustering of genes with similar expression patterns.
 Upregulated genesin Reformed Smokers:
@@ -940,6 +941,21 @@ qplot(pcaResults$x[,1], pcaResults$x[,2],
 ```
 The separation based on stage is not distinctly clear in the PCA plot.
 This factor does not seem to be the primary influencing factor in the variability observed in the data.
+
+-by gender:
+```{r}
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$gender, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Gender Per Day") +
+  theme_minimal()
+```
+The plot shows 4 relatively distinct clusters corresponding to the two different genders. 
+This suggests that the gene expression profiles are quite different between The two genders!
+This could, of course, be due to inherent biological differences in gene expression between males and females, but might also suggest a gender-specific responses to smoking, meaning the response to smoking, including its impact on gene expression, may differ between males and females.
 
 -by Primary Diagnosis:
 ```{r}
@@ -1242,29 +1258,69 @@ We have a lot of samples so it is a bit hard to see the clusters.
 
 -Let us zoom in: we will cluster the samples based on similarity in gene expression profiles. This will group similar samples together and make it easier to identify patterns.
 ```{r}
-# Perform sample clustering
-sample_dist <- dist(t(normcounts))
-sample_clusters <- hclust(sample_dist)
-sample_order <- sample_clusters$order
+# Perform hierarchical clustering on the samples
+d <- dist(t(normcounts[select, ]))
+hc <- hclust(d, method = "average")
+
+# Cut the dendrogram to get clusters
+num_clusters <- 25  # You can adjust this number based on your desired number of clusters
+clusters <- cutree(hc, k = num_clusters)
+
+# Select representative samples from each cluster (e.g., the first sample in each cluster)
+representatives <- sapply(1:num_clusters, function(cl) which(clusters == cl)[1])
+
+# Update the annotation data frame for the representative samples
+df_representatives <- data.frame(row.names = colnames(dds_subset)[representatives],
+                                 status = colData(dds_subset)$tobacco_smoking_status[representatives])
+
+# Plot heatmap for representative samples
+pheatmap(normcounts[select, representatives],
+         cluster_rows = TRUE,
+         show_colnames = TRUE,  # Show column names for better identification
+         cluster_cols = TRUE,
+         annotation_col = df_representatives,
+         scale = 'row',
+         cutree_cols = 2,
+         cutree_rows = 2,
+         fontsize_col = 8,  # Adjust font size for better readability
+         fontsize_row = 8,
+         width = 12, height = 10)  # Increase figure size
+
 ```
+### Heatmap Observations for Clustered Samples in Case 2:
 
-```{r}
-# Select a subset of samples for visualization
-num_samples_to_display <- 22
-subset_samples <- sample_order[92:110]
+In the hierarchical clustering for the heatmap in the second case, Euclidean distance was used to create the distance matrix, and Average method was used for clustering. These methods were selected because they provided the best separation of samples based on smoking status, allowing for relatively clear clusters that highlight the differences in gene expression profiles related to smoking behavior
+We can see the samples are clustered pretty well into two main groups based on their smoking status, the distinction between Current Smokers and Current Reformed Smokers for ≤ 15 years is noticeable.
 
-# Plot the heatmap with sample clustering and subsetting
-pheatmap(normcounts[select, subset_samples],
-         cluster_rows=TRUE,
-         show_colnames = FALSE, 
-         cluster_cols=TRUE, 
-         annotation_col=df, 
-         scale = 'row', 
-         cutree_cols = 2, 
-         cutree_rows = 2)
+Genes such as APCDD1L-DT, ZNF536, KCNJ3, and KCNQ2 show higher expression in Current Smokers.
+Those gene's main functions are:
+(1) Inflammatory Response: cellular signaling, ion transport, regulatory processes. Their higher expression in
+    current smokers suggests that smoking induces a heightened state of cellular stress and inflammation. This
+    response is consistent with the ongoing exposure to harmful substances in tobacco smoke, leading to chronic
+    inflammation and potential tissue damage.
+(2) Cellular Stress and Differentiation: Genes such as ZNF536, which is involved in cellular differentiation,
+    indicate that smoking disrupts normal cell differentiation pathways. Potassium channels like KCNJ3 and KCNQ2
+    suggest alterations in ion homeostasis and membrane potential regulation, which can affect cellular
+    excitability and function.
+(3) Pathological Changes: The upregulation of these genes in current smokers could be contributing to the
+    pathological state seen in smoking-related lung diseases, including lung cancer. The persistent activation of
+    these genes may support tumorigenic processes, such as uncontrolled cell growth and survival.
+Genes like KLK12, LINC00689, PCP4, and GABRB2 have higher expression in short-termed Reformed Smokers.
+Those gene's main functions are:
+(1) Tissue Repair and Anti-Inflammatory Response: The genes in this cluster are associated with proteolysis,
+    extracellular matrix remodeling, and anti-inflammatory processes. The higher expression of these genes in
+    reformed smokers suggests activation of tissue repair mechanisms and a reduction in inflammatory responses
+    following smoking cessation.
+(2) Regulation of Gene Expression: LINC00689 indicates that smoking cessation leads to changes in gene expression
+    regulation, which may help restore normal cellular functions disrupted by smoking.
+(3) Cellular Homeostasis and Stress Response: Genes like TFPI2 and GABRB2 play roles in maintaining cellular
+    homeostasis and reducing stress. Their upregulation in reformed smokers suggests an adaptive response to
+    mitigate the damage caused by prior smoking and support tissue recovery.
+(4) Metabolic Adjustments: Genes involved in cellular metabolism, such as TKTL1, are upregulated, indicating
+    metabolic shifts that favor recovery and stabilization of cellular functions post smoking cessation.
 
-```
-
+Conclusion:
+We think the second cluster's higher expression in reformed smokers highlights the body's capacity to initiate repair mechanisms once smoking is ceased. This recovery process is essential for reducing the risk of developing smoking-related diseases, including lung cancer.
 
 - To visualized relations between samples we can use PCA
 - First, lets find 1000 most variable genes:
@@ -1372,6 +1428,22 @@ qplot(pcaResults$x[,1], pcaResults$x[,2],
 ```
 The separation based on stage is not distinctly clear in the PCA plot.
 This factor does not seem to be the primary influencing factor in the variability observed in the data.
+
+
+-by gender:
+```{r}
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$gender, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Gender Per Day") +
+  theme_minimal()
+```
+The plot shows 4 relatively distinct clusters corresponding to the two different genders. 
+This suggests that the gene expression profiles are quite different between The two genders!
+This could, of course, be due to inherent biological differences in gene expression between males and females, but might also suggest a gender-specific responses to smoking, meaning the response to smoking, including its impact on gene expression, may differ between males and females.
 
 -by Primary Diagnosis:
 ```{r}
@@ -1545,6 +1617,7 @@ selected_statuses <- c("Current Reformed Smoker for > 15 yrs", "Current Reformed
 d_tumor.3 <- d_tumor.3[d_tumor.3$tobacco_smoking_status %in% selected_statuses, ]
 d_tumor.3
 ```
+
 - boxplot for the TEX15 gene 
 ```{r}
 ggplot(d_tumor.3[d_tumor.3$count < 200,], aes(tobacco_smoking_status, count)) + 
@@ -1601,6 +1674,7 @@ quartiles_tumor.3
 low.3 <- rownames(d_tumor.3[d_tumor.3$tobacco_smoking_status == "Current Reformed Smoker for > 15 yrs" & d_tumor.3$count <= quartiles_tumor.3[1],])
 high.3 <- rownames(d_tumor.3[d_tumor.3$tobacco_smoking_status == "Current Reformed Smoker for > 15 yrs" & d_tumor.3$count >= quartiles_tumor.3[2],])
 ```
+
 ## Visualization of gene expression for multiple genes
 
 - Volcano Plot
@@ -1711,32 +1785,75 @@ pheatmap(normcounts[select, ],
 ```
 
 We have a lot of samples so it is a bit hard to see the clusters.
-
 -Let us zoom in: we will cluster the samples based on similarity in gene expression profiles. This will group similar samples together and make it easier to identify patterns.
-```{r}
-# Perform sample clustering
-sample_dist <- dist(t(normcounts))
-sample_clusters <- hclust(sample_dist)
-sample_order <- sample_clusters$order
-```
+
 
 ```{r}
-# Select a subset of samples for visualization
-num_samples_to_display <- 20
+# Perform hierarchical clustering on the samples
+d <- dist(t(normcounts[select, ]), method = "euclidean")
+hc <- hclust(d, method = "ward.D2")
 
-subset_samples <- sample_order[41:59]
+# Cut the dendrogram to get clusters
+num_clusters <- 20  # You can adjust this number based on your desired number of clusters
+clusters <- cutree(hc, k = num_clusters)
 
-# Plot the heatmap with sample clustering and subsetting
-pheatmap(normcounts[select, subset_samples],
-         cluster_rows=TRUE,
-         show_colnames = FALSE, 
-         cluster_cols=TRUE, 
-         annotation_col=df, 
-         scale = 'row', 
-         cutree_cols = 2, 
-         cutree_rows = 2)
+# Select representative samples from each cluster (e.g., the first sample in each cluster)
+representatives <- sapply(1:num_clusters, function(cl) which(clusters == cl)[1])
+
+# Update the annotation data frame for the representative samples
+df_representatives <- data.frame(row.names = colnames(dds_subset)[representatives],
+                                 status = colData(dds_subset)$tobacco_smoking_status[representatives])
+
+# Plot heatmap for representative samples
+pheatmap(normcounts[select, representatives],
+         cluster_rows = TRUE,
+         show_colnames = TRUE,  # Show column names for better identification
+         cluster_cols = TRUE,
+         annotation_col = df_representatives,
+         scale = 'row',
+         cutree_cols = 2,
+         cutree_rows = 2,
+         fontsize_col = 8,  # Adjust font size for better readability
+         fontsize_row = 8,
+         width = 12, height = 10)  # Increase figure size
 
 ```
+### Heatmap Observations for Clustered Samples in Case 3:
+
+In the hierarchical clustering for the heatmap in the first case, Euclidean distance was used to create the distance matrix, and ward.D2 was used for clustering. These methods were selected because they provided the best separation of samples based on smoking status, allowing for relatively clear clusters that highlight the differences in gene expression profiles related to smoking behavior
+We can see the samples cluster pretty well into two groups corresponding to the smoking status categories.
+
+Cluster 1: Genes Highly Expressed in short-termed Reformed Smokers: RPE65, NOS2, CTCFL, LINC01206, FGF8P2, TDRD12, DPYSL5, CALN1
+Those gene's main functions are:
+(1) Inflammatory and Immune Response: NOS2, for instance, is involved in the production of nitric oxide, a critical
+    mediator in inflammatory processes. The higher expression of these genes in short-termed reformed smokers
+    suggests a residual inflammatory response, possibly due to the body's ongoing adjustment to smoking cessation.
+(2) Cell Differentiation and Growth: Genes such as CTCFL are involved in regulating gene expression during
+    development and differentiation. Elevated levels in this group could indicate ongoing cellular differentiation
+    and tissue repair processes.
+(3) Metabolic and Stress Response: Higher expression of these genes may indicate an adaptive response to the stress
+    and metabolic changes induced by smoking and the initial stages of cessation.
+
+Cluster 2: Genes Highly Expressed in long-termed Reformed Smokers: CPLX2, LINC00942, RN7SL792P, MAPK4, NR1I2, XKR4, SBF1P1, ALB, ANXA10, REG4, LOC389602
+Those gene's main functions are:
+(1) Metabolic Regulation: Genes like ALB and MAPK4 play roles in metabolic processes and signal transduction. Their
+    increased expression in long-term reformed smokers suggests a return to or maintenance of metabolic homeostasis
+    after prolonged smoking cessation.
+(2) Gene Regulation and Signaling: Several genes in this cluster, such as MAPK4 and NR1I2, are involved in cellular
+    signaling pathways, indicating active regulation of cellular processes that help stabilize and maintain
+    cellular function over the long term.
+(3) Tissue Homeostasis and Repair: Genes like ANXA10 and REG4 are involved in tissue repair and homeostasis. Their
+    upregulation suggests that prolonged smoking cessation allows for more complete tissue recovery and maintenance
+    of cellular homeostasis.
+(4) Reduction of Inflammatory Response: The upregulation of certain genes in this cluster indicates a decreased
+    inflammatory response compared to the ≤ 15 years group, which is consistent with the long-term benefits of
+    smoking cessation.
+
+Conclusion:
+In reformed smokers for ≤ 15 years, the elevated expression of genes involved in inflammation and tissue repair indicates ongoing recovery processes. The body is still actively adjusting to the cessation of smoking, dealing with residual inflammation, and engaging in cellular repair.
+In reformed smokers for > 15 years, the gene expression patterns suggest that the body has achieved a more stable state of homeostasis. The upregulation of genes involved in metabolic regulation and tissue maintenance highlights the long-term benefits of smoking cessation in restoring normal cellular functions.
+
+
 - We will use PCA to visualized relations between samples
 First, lets find 1000 most variable genes:
 ```{r}
@@ -1844,6 +1961,22 @@ qplot(pcaResults$x[,1], pcaResults$x[,2],
 The separation based on stage is not distinctly clear in the PCA plot.
 This factor does not seem to be the primary influencing factor in the variability observed in the data.
 
+
+-by gender:
+```{r}
+pcaResults = prcomp(normcounts.top1Kvar)
+
+# Plot PCA results
+qplot(pcaResults$x[,1], pcaResults$x[,2], 
+      col=colData(pca_dds.symbol)$gender, 
+      size=I(2), alpha=I(0.6)) +
+  labs(x="PC-1", y="PC-2", color="Gender Per Day") +
+  theme_minimal()
+```
+The plot shows 4 relatively distinct clusters corresponding to the two different genders. 
+This suggests that the gene expression profiles are quite different between The two genders!
+This could, of course, be due to inherent biological differences in gene expression between males and females, but might also suggest a gender-specific responses to smoking, meaning the response to smoking, including its impact on gene expression, may differ between males and females.
+
 -by Primary Diagnosis:
 ```{r}
 pcaResults = prcomp(normcounts.top1Kvar)
@@ -1858,6 +1991,7 @@ qplot(pcaResults$x[,1], pcaResults$x[,2],
 The plot shows two relatively distinct clusters corresponding to the two different primary diagnoses. 
 This suggests that the gene expression profiles are quite different between adenocarcinoma and squamous cell carcinoma. 
 We will take that into account in further analysis.
+
 Next, we will perform GSEA to understand the broader biological context and interactions among significant genes.
 
 ### GSEA - case 3
@@ -1972,88 +2106,7 @@ Conclusion:
     processes over a prolonged period after smoking cessation. Cells in long-term reformed smokers could be
     adapting towards a less proliferative and potentially less cancer-prone state.
     
-Let us run GSEA for all cases combined.
-
-- First we need to unite the significant genes from all 3 cases to retrieve more reliable DEGs
-```{r}
-# Combine the filtered data frames into one (optional)
-filter.unite <- rbind(filter.sgn.genes.1.nona, filter.sgn.genes.2.nona, filter.sgn.genes.3.nona)
-
-# Remove duplicates if necessary
-filter.unite <- filter.unite[!duplicated(filter.unite$symbol),]
-filter.unite
-```
-
-- Next we need to create an ordered vector by the log fold change with the gene 
-  symbols as names:
-```{r}
-
-# Convert DESeqResults object to a data frame
-filter.unite_df <- as.data.frame(filter.unite)
-
-# Remove rows with NA in the symbol column
-filtered_data_u <- filter.unite_df %>%
-  filter(!is.na(symbol))
-
-# Average log2FoldChange for duplicate gene symbols
-unique_genes_u <- filtered_data_u %>%
-  group_by(symbol) %>%
-  summarize(log2FoldChange = mean(log2FoldChange, na.rm = TRUE)) %>%
-  ungroup()
-
-# Order the unique genes by log2FoldChange in descending order
-unique_genes_ordered_u <- unique_genes_u %>%
-  arrange(desc(log2FoldChange))
-
-# Create a named vector with log2FoldChange values and gene symbols as names
-genes_ordered_u <- setNames(unique_genes_ordered_u$log2FoldChange, unique_genes_ordered_u$symbol)
-
-genes_ordered_u
-```
-
-- For the hallmarks pathways gene sets we'll use msigdbr package.
-```{r}
-# Load hallmark gene sets
-hallmarks_u <- msigdbr(species = "Homo sapiens", category = "H")
-hallmarks_list_u <- split(hallmarks_u$gene_symbol, hallmarks_u$gs_name)
-```
-
-- view hallmark data 
-```{r}
-# Get all genes in hallmarks_list
-all_genes_in_hallmarks_u <- unique(unlist(hallmarks_list_u))
-
-# Get gene identifiers in genes_ordered
-genes_in_ordered_u <- names(genes_ordered_u)
-
-# Check overlap
-overlap_genes_u <- intersect(all_genes_in_hallmarks_u, genes_in_ordered_u)
-
-# Summary of the overlap
-cat("Number of genes in hallmarks_list:", length(all_genes_in_hallmarks_u), "\n")
-cat("Number of genes in genes_ordered:", length(genes_in_ordered_u), "\n")
-cat("Number of overlapping genes:", length(overlap_genes_u), "\n")
-
-```
-we got 542 genes.
-
-- Using GSEA() as done in class
-```{r}
-# Run GSEA
-set.seed(123)  # Set seed for reproducibility
-gsea_results_u <- fgsea(pathways = hallmarks_list_u, 
-                      stats = genes_ordered_u, 
-                      minSize = 15, 
-                      maxSize = 500)
-gsea_results_u
-# Convert results to a data frame
-gsea_results_df_u <- as.data.frame(gsea_results_u)
-# Filter significant results (e.g., padj < 0.05)
-significant_results_u <- gsea_results_df_u %>% filter(padj < 0.05)
-significant_results_u
-```
-we received 0 significant pathways.
-
+    
 ### Next we will preform analysis of the intersection of our 3 cases:
 
 INTERSECT COMMON DEGs from all 3 cases
@@ -2062,6 +2115,11 @@ INTERSECT COMMON DEGs from all 3 cases
 filter.intersect <- filter.sgn.genes.1.nona[filter.sgn.genes.1.nona$symbol %in% filter.sgn.genes.2.nona$symbol ,]
 filter.intersect <- filter.intersect[filter.intersect$symbol %in% filter.sgn.genes.3.nona$symbol ,]
 filter.intersect
+```
+
+- Save the significant genes from all case for a deeper look
+```{r}
+write.csv(filter.intersect, "signif_genes_intersect.csv")
 ```
 
 - visualizing Venn diagram for common DEGs
@@ -2099,7 +2157,7 @@ upViewport()
 # Add the descriptive references
 pushViewport(viewport(layout.pos.col = 2))
 grid.text("Case 1: Non-smokers vs \n reformed for <= 15 years", 
-          x = 0, y = 0.85, gp = gpar(fontsize = 10, col = "black"), just = "left")
+          x = 0, y = 0.85, gp = gpar(fontsize = 10, col = "lightblue"), just = "left")
 grid.text("Case 2: Current smokers vs \n reformed for <= 15 years", 
           x = 0, y = 0.75, gp = gpar(fontsize = 10, col = "red"), just = "left")
 grid.text("Case 3: reformed for > 15 years vs \n reformed for <= 15 years", 
@@ -2108,6 +2166,125 @@ upViewport()
 
 ```
 We can see that there are 63 overlapping significent genes acroos all 3 cases!
+
+We will look at the main genes and divide them into 4 groups based on their function:
+(1) Genes Related to Cell Structure and Adhesion
+    - CEBP350: Involved in cell structure and centrosome integrity.
+    - ICAM1: Important for cell adhesion and immune responses.
+    - ITGBL1: Integrin, involved in cell adhesion.
+(2) Genes Involved in Immune Response:
+    - FLT3LG: Growth factor important for hematopoiesis.
+    - HAMP: Hepcidin, involved in iron regulation and immune response.
+    - NOS2: Produces nitric oxide, a mediator in the immune response.
+    - TFPI2: Tissue factor pathway inhibitor, involved in coagulation and possibly inflammation.
+    - XKR4: Involved in the immune response.
+(3) Genes Related to Signal Transduction and Transcription Regulation:
+    - CTCF: Chromatin organizer, important for transcription regulation.
+    - TP53INP2: Regulates p53, involved in apoptosis and cell cycle regulation.
+    - RARB: Retinoic acid receptor, involved in transcription regulation.
+(4) Genes Involved in Development and Differentiation
+    - EMX2: Homeobox gene involved in brain and urogenital development.
+    - INHA: Inhibin, involved in reproductive physiology.
+    - MYBPC1: Involved in muscle development.
+(5) Genes Associated with Metabolism
+    - PDE1A: Phosphodiesterase, involved in cyclic nucleotide metabolism.
+    - UGT1A1: Enzyme involved in glucuronidation.
+    
+Next, we will create a boxplot of the most significant gene's expression levels in all 4 cases
+
+- remove NAs and create a genes symbol vector
+```{r}
+# Assuming filter_intersect is your DataFrame
+
+# Filter out rows where symbol is NA
+filtered_intersect <- filter.intersect[!is.na(filter.intersect$symbol), ]
+
+# Create the intersected_genes vector
+intersected_genes <- filtered_intersect$symbol
+
+# Display the intersected_genes vector
+intersected_genes
+```
+```{r}
+dds <- nsclc.dds.tumor
+dds.symbol <- dds
+
+# Filter out rows where symbol is NA
+filtered_intersect <- filter.intersect[!is.na(filter.intersect$symbol), ]
+
+# Create the intersected_genes vector
+intersected_genes <- filtered_intersect$symbol
+
+# Get the ENSEMBL IDs directly from filter_intersect
+ensembl_ids <- rownames(filtered_intersect[!is.na(filtered_intersect$symbol), ])
+
+# Display the intersected_genes vector
+print(intersected_genes)
+print(ensembl_ids)
+length(intersected_genes)
+```
+```{r}
+# Verify the first gene and its ENSEMBL ID
+first_gene <- intersected_genes[1]
+first_gene_ensembl <- ensembl_ids[1]
+first_gene
+first_gene_ensembl
+
+norm_counts <- assay(vst(dds.symbol, blind=TRUE))
+gene_symbols <- mapIds(org.Hs.eg.db,
+                       keys = gsub("\\..*", "", rownames(norm_counts)),
+                       column = "SYMBOL",
+                       keytype = "ENSEMBL",
+                       multiVals = "first")
+```
+
+```{r}
+if (!is.na(first_gene_ensembl) && first_gene_ensembl %in% rownames(norm_counts)) {
+  # Extract expression data for the first gene
+  first_gene_expression <- norm_counts[first_gene_ensembl, ]
+  
+  # Prepare the data for plotting
+  plot_data <- data.frame(
+    Expression = as.numeric(first_gene_expression),
+    SmokingStatus = colData(dds)$tobacco_smoking_status
+  )
+
+  ggplot(plot_data, aes(x = SmokingStatus, y = Expression, fill = SmokingStatus)) +
+    geom_boxplot() +
+    labs(title = paste("Expression of", first_gene, "across Smoking Statuses"),
+         x = "Smoking Status",
+         y = "Expression Level") +
+    theme_minimal() +
+    scale_fill_manual(values = c("Lifelong Non-Smoker" = "lightblue",
+                                 "Current Smoker" = "lightpink",
+                                 "Current Reformed Smoker for < or = 15 yrs" = "lightgreen",
+                                 "Current Reformed Smoker for > 15 yrs" = "lightyellow")) +
+    theme(legend.position = "right",
+          axis.text.x = element_blank(),  # Remove x-axis text
+          axis.ticks.x = element_blank())  # Remove x-axis ticks
+} else {
+  print("The first gene symbol could not be matched to an ENSEMBL ID in the dataset.")
+}
+```
+we can see a difference in the level of expressions of CCDC26 across all case.
+
+- Keep sample names for those with top and bottom quartiles of CCDC26 for survival analysis
+```{r}
+# Extract expression data for Lifelong Non-Smokers
+lifelong_non_smokers <- colData(dds)$tobacco_smoking_status == "Lifelong Non-Smoker"
+ccdc26_expression <- norm_counts[first_gene_ensembl, lifelong_non_smokers]
+
+# Calculate quartiles
+quartiles_tumor.intersect <- quantile(ccdc26_expression, probs = c(0.25, 0.75))
+
+# Identify sample names in the top and bottom quartiles
+sample_names <- colnames(norm_counts)[lifelong_non_smokers]
+low_tumor.intersect <- sample_names[ccdc26_expression <= quartiles_tumor.intersect[1]]
+high_tumor.intersect <- sample_names[ccdc26_expression >= quartiles_tumor.intersect[2]]
+
+# Display the results
+quartiles_tumor.intersect
+```
 
 ### GSEA
 We'll use functional enrichment analysis with the Hallmark pathways gene sets for the intersected cases.
@@ -2180,3 +2357,5 @@ gsea_results_df <- as.data.frame(gsea_results)
 significant_results <- gsea_results_df %>% filter(padj < 0.05)
 significant_results
 ```
+We received 0 significant pathways for the intersection.
+Though this kind of result might indicate on a troublesome analysis, there are many possible reasons for it, and it's not uncommon to get one hallmark for such a small number of genes (9).
