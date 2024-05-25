@@ -22,7 +22,7 @@ if (!require("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 
 #install packages
-packages <- c("tidyverse","hrbrthemes", "viridis", "msigdbr", "dplyr", "tibble", "venn","VennDiagram", "grid") 
+packages <- c("tidyverse","hrbrthemes", "viridis", "msigdbr", "dplyr", "tibble", "venn","VennDiagram", "grid", "factoextra") 
 biocManager_packages <- c("TCGAbiolinks","DESeq2", "GEOquery", "hrbrthemes", "apeglm", "AnnotationDbi", "org.Hs.eg.db","ReportingTools", "EnhancedVolcano", "pheatmap", "clusterProfiler", "fgsea")
 
 not_installed <-packages[!(packages %in% installed.packages()[ , "Package"])]
@@ -54,6 +54,7 @@ library(msigdbr)
 library(dplyr)
 library(tibble)
 library(clusterProfiler)
+library(factoextra)
 library(ReportingTools)
 library(fgsea)
 library(hrbrthemes) # ggplot2 themes
@@ -971,6 +972,7 @@ qplot(pcaResults$x[,1], pcaResults$x[,2],
 The plot shows two relatively distinct clusters corresponding to the two different primary diagnoses. 
 This suggests that the gene expression profiles are quite different between adenocarcinoma and squamous cell carcinoma. 
 We will take that into account in further analysis.
+
 
 Next, we will perform GSEA to understand the broader biological context and interactions among significant genes.
 
@@ -2285,6 +2287,144 @@ high_tumor.intersect <- sample_names[ccdc26_expression >= quartiles_tumor.inters
 # Display the results
 quartiles_tumor.intersect
 ```
+
+### K-means Clustering
+
+Next, we will preform K-means clustering for our intersected significant genes
+
+Case 1:
+
+- prepare data
+```{r}
+dds.symbol <- nsclc.dds.tumor
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Lifelong Non-Smoker", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(dds.symbol)$tobacco_smoking_status %in% desired_status
+dds.symbol <- dds.symbol[, subset_samples]
+
+rownames(dds.symbol)[is.na(rownames(dds.symbol))] <- rownames(dds)[is.na(rownames(dds.symbol))]
+rownames(dds.symbol) <- make.unique(rownames(dds.symbol))
+
+normcounts = assay(vst(dds.symbol, blind=T))
+
+var_per_gene <- apply(normcounts, 1, var)  # Calculate the variance per gene
+selectedGenes <- rownames(filter.intersect)
+normcounts.top1Kvar <- t(normcounts[selectedGenes,])  # Construct a new matrix only for the top 1000 genes
+
+smoking_status <- colData(dds.symbol)$tobacco_smoking_status
+shortened_status <- ifelse(smoking_status == "Lifelong Non-Smoker", "Non", "Reformed")
+#diagnosis <- colData(dds.symbol)$primary_diagnosis
+#shortened_diagnosis <- ifelse(smoking_status == "Squamous cell carcinoma, NOS", "SCC", "ADC")
+#gender <- colData(dds.symbol)$gender
+rownames(normcounts.top1Kvar) <- paste0(shortened_status, "_", seq(1:nrow(normcounts.top1Kvar))) # Make sample named informative
+```
+
+- Elbow plot for finding best k
+```{r}
+fviz_nbclust(normcounts.top1Kvar, FUN = hcut, method = "wss")
+```
+
+We will take k=2
+- preform k-means clustering
+```{r}
+kmeans.out <- kmeans(normcounts.top1Kvar, centers = 2, nstart = 25)
+```
+
+- plot result
+```{r}
+fviz_cluster(kmeans.out, data = normcounts.top1Kvar)
+```
+We can see both smoking statuses in both clusters.
+
+Case 2:
+
+- prepare data
+```{r}
+dds.symbol <- nsclc.dds.tumor
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Current Smoker", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(dds.symbol)$tobacco_smoking_status %in% desired_status
+dds.symbol <- dds.symbol[, subset_samples]
+
+rownames(dds.symbol)[is.na(rownames(dds.symbol))] <- rownames(dds)[is.na(rownames(dds.symbol))]
+rownames(dds.symbol) <- make.unique(rownames(dds.symbol))
+
+normcounts = assay(vst(dds.symbol, blind=T))
+
+var_per_gene <- apply(normcounts, 1, var)  # Calculate the variance per gene
+selectedGenes <- rownames(filter.intersect)
+normcounts.top1Kvar <- t(normcounts[selectedGenes,])  # Construct a new matrix only for the top 1000 genes
+
+smoking_status <- colData(dds.symbol)$tobacco_smoking_status
+shortened_status <- ifelse(smoking_status == "Current Smoker", "Smoker", "Reformed")
+#diagnosis <- colData(dds.symbol)$primary_diagnosis
+#shortened_diagnosis <- ifelse(smoking_status == "Squamous cell carcinoma, NOS", "SCC", "ADC")
+#gender <- colData(dds.symbol)$gender
+rownames(normcounts.top1Kvar) <- paste0(shortened_status, "_", seq(1:nrow(normcounts.top1Kvar))) # Make sample named informative
+```
+
+- Elbow plot for finding best k
+```{r}
+fviz_nbclust(normcounts.top1Kvar, FUN = hcut, method = "wss")
+```
+
+We will take k=2
+- preform k-means clustering
+```{r}
+kmeans.out <- kmeans(normcounts.top1Kvar, centers = 2, nstart = 25)
+```
+
+- plot result
+```{r}
+fviz_cluster(kmeans.out, data = normcounts.top1Kvar)
+```
+We can see both smoking statuses in both clusters.
+
+case 3:
+
+- prepare data
+```{r}
+dds.symbol <- nsclc.dds.tumor
+# Subset the dataset based on tobacco smoking status
+desired_status <- c("Current Reformed Smoker for > 15 yrs", "Current Reformed Smoker for < or = 15 yrs")
+subset_samples <- colData(dds.symbol)$tobacco_smoking_status %in% desired_status
+dds.symbol <- dds.symbol[, subset_samples]
+
+rownames(dds.symbol)[is.na(rownames(dds.symbol))] <- rownames(dds)[is.na(rownames(dds.symbol))]
+rownames(dds.symbol) <- make.unique(rownames(dds.symbol))
+
+normcounts = assay(vst(dds.symbol, blind=T))
+
+var_per_gene <- apply(normcounts, 1, var)  # Calculate the variance per gene
+selectedGenes <- rownames(filter.intersect)
+normcounts.top1Kvar <- t(normcounts[selectedGenes,])  # Construct a new matrix only for the top 1000 genes
+
+smoking_status <- colData(dds.symbol)$tobacco_smoking_status
+shortened_status <- ifelse(smoking_status == "Current Reformed Smoker for < or = 15 yrs", "Short", "Long")
+#diagnosis <- colData(dds.symbol)$primary_diagnosis
+#shortened_diagnosis <- ifelse(smoking_status == "Squamous cell carcinoma, NOS", "SCC", "ADC")
+#gender <- colData(dds.symbol)$gender
+rownames(normcounts.top1Kvar) <- paste0(shortened_status, "_", seq(1:nrow(normcounts.top1Kvar))) # Make sample named informative
+```
+
+- Elbow plot for finding best k
+```{r}
+fviz_nbclust(normcounts.top1Kvar, FUN = hcut, method = "wss")
+```
+
+We will take k=2
+- preform k-means clustering
+```{r}
+kmeans.out <- kmeans(normcounts.top1Kvar, centers = 2, nstart = 25)
+```
+
+- plot result
+```{r}
+fviz_cluster(kmeans.out, data = normcounts.top1Kvar)
+```
+We can see both smoking statuses in both clusters.
+
+It seems all cases yield clusters that contain both smoking statuses.
 
 ### GSEA
 We'll use functional enrichment analysis with the Hallmark pathways gene sets for the intersected cases.
