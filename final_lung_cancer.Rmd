@@ -1771,8 +1771,643 @@ ggplot(significant_results_u, aes(x = reorder(pathway, NES), y = NES)) +
 ```
 Results and conclusion:
 ___________________________________
+
+___________________
+# Survival Analysis
+___________________
+- Download CPTAC-3's clinical data 
+```{r}
+nsclc.clin <- GDCquery_clinic("CPTAC-3", "clinical")
+#View(gbm.clin)
+```
+
+- Take only "Lung" cancer samples
+```{r}
+tissue <- c( "Lower lobe, lung", "Lung, NOS", "Middle lobe, lung", "Upper lobe, lung")
+
+filtered_data <- nsclc.clin[nsclc.clin$tissue_or_organ_of_origin %in% tissue, ]
+nsclc.clin <- filtered_data
+```
+
+- Choose only information that is relevant to survival analysis
+```{r}
+nsclc.clin.df = nsclc.clin[, 
+                           c("submitter_id",
+                             "gender",
+                             "vital_status", 
+                             "cause_of_death",
+                             "ajcc_pathologic_stage", 
+                             "days_to_death",
+                             "days_to_last_follow_up",
+                             "tobacco_smoking_status",
+                             "cigarettes_per_day")]
+```
+
+- Before we can proceed, we need to change part of this information in a way that is acceptable to the methods from the survival package we are using:
+```{r}
+# create a new boolean variable that has TRUE for dead patients
+# and FALSE for live patients
+nsclc.clin.df$deceased = nsclc.clin.df$vital_status == "Dead"
+
+# create an "overall survival" variable that is equal to days_to_death
+# for dead patients, and to days_to_last_follow_up for patients who
+# are still alive
+nsclc.clin.df$overall_survival = ifelse(nsclc.clin.df$deceased,
+                                   nsclc.clin.df$days_to_death,
+                                   nsclc.clin.df$days_to_last_follow_up)
+
+# convert overall_survival to numeric for Surv object
+nsclc.clin.df$overall_survival <- as.numeric(as.character(nsclc.clin.df$overall_survival))
+```
+- Form a dependent variable out of the overall_survival and deceased information:
+```{r}
+lung.Surv <- Surv(nsclc.clin.df$overall_survival, nsclc.clin.df$deceased)
+```
+
+## Kaplan-Meier plots
+
+### First start with basic question: does the amount of cigarettes per day influence survival in lung cancer patients?
+- For doing so, we will divide the patients into 3 groups: Patients who smoke over 20 cigarettes per day, patients who smoke under 20 cigarettes per day,
+and patients who don't smoke at all. 
+
+```{r}
+nsclc.clin.df <- nsclc.clin.df %>%
+  mutate(cigarettes_per_day = case_when(
+    tobacco_smoking_status == "Lifelong Non-Smoker" ~ 0,
+    TRUE ~ cigarettes_per_day  # Keep the original value otherwise
+  ))
+
+nsclc.clin.df <- nsclc.clin.df %>%
+  mutate(ccc = case_when(
+    cigarettes_per_day == 0   ~ "none",
+    cigarettes_per_day <  20  ~ "less then 20",
+    cigarettes_per_day >= 20  ~ "more then 20",
+    is.na(cigarettes_per_day) ~ NA_character_
+  ))
+table(nsclc.clin.df$ccc, useNA = "always")
+```
+
+```{r}
+ggsurvplot(
+  fit=survfit(lung.Surv ~ ccc, data=nsclc.clin.df),
+  data=nsclc.clin.df,
+  xlab = "Days",
+  legend.title = "cigarettes per day",
+  legend.labs = c("less then 20", "more then 20", "none"),
+  pval=T,
+  risk.table=T,
+  risk.table.col="strata",
+  tables.height = 0.3,
+  ggtheme = theme_bw())
+```
+### Lets continue with more interesting question: how does tumor stage affect survival?
+
+The tumor_stage variable that TCGA provides for this tumor contains both stages and sub-stages, eg stage IIIA or stage IVB. We want to join together the sub-stages, to increase the group size and reduce complexity (and thus increase the power of the logrank statistics).
+
+```{r}
+# remove any of the numbers "1", "2" or "3", but only if they are at the end of the name
+# eg "Stage IA2" would become simply "Stage IA"
+nsclc.clin.df$ajcc_pathologic_stage = gsub("[123]$", "", nsclc.clin.df$ajcc_pathologic_stage)
+
+# remove any of the letters "A", "B" or "C", but only if they are at the end of the name
+# eg "stage IIIA" would become simply "stage III"
+nsclc.clin.df$ajcc_pathologic_stage = gsub("[ABC]$", "", nsclc.clin.df$ajcc_pathologic_stage)
+
+# we remove those with stage "not reported", since they are unknown
+nsclc.clin.df[which(nsclc.clin.df$ajcc_pathologic_stage == "Not Reported"), "ajcc_pathologic_stage"] = NA
+
+# finally, we also remove those with tumor stage 4, since they are too few
+nsclc.clin.df[which(nsclc.clin.df$ajcc_pathologic_stage == "Stage IV"), "ajcc_pathologic_stage"] = NA
+
+table(nsclc.clin.df$ajcc_pathologic_stage)
+```
+```{r}
+ggsurvplot(
+  fit=survfit(lung.Surv ~ ajcc_pathologic_stage, data=nsclc.clin.df),
+  data=nsclc.clin.df,
+  legend.title = "tumor stage",
+  legend.labs = c("Stage I", "Stage II", "Stage III"),
+  xlab = "Days",
+  pval=T,
+  risk.table=T,
+  risk.table.col="strata",
+  tables.height = 0.35,
+  ggtheme = theme_bw())
+```
+We can see that the p-value we get from this analysis is 0.0083 that is lower than 0.05.
+By this results, we can conclude that pathological stage affect the survival time of individuals.
+The curves show that the higher the pathological stage, the lower the chance of survival.
+
+### To end this part, we ask one last quesion: how does smoking status affect survival?
+
+```{r}
+table(nsclc.clin.df$tobacco_smoking_status)
+```
+```{r}
+# we remove those with Smoking history not documented
+nsclc.clin.df[which(nsclc.clin.df$tobacco_smoking_status == "Smoking history not documented"), "tobacco_smoking_status"] = NA
+
+# we also remove current reformed smokers, that have no information about the period of time they quit smoking
+nsclc.clin.df[which(nsclc.clin.df$tobacco_smoking_status == "Current Reformed Smoker, Duration Not Specified"), "tobacco_smoking_status"] = NA
+```
+
+```{r, fig.width=10, fig.height=5}
+ggsurvplot(
+  fit=survfit(lung.Surv ~ tobacco_smoking_status, data=nsclc.clin.df),
+  data=nsclc.clin.df,
+  xlab = "Days",
+  legend.title = "Smoking Status",
+  legend.labs = c("quit less then 5 years", "quit more then 5 years", "Current Smoker", "Lifelong Non-Smoker"),
+  pval=T,
+  risk.table=T,
+  risk.table.col="strata",
+  tables.height = 0.3,
+  ggtheme = theme_bw()
+  )
+```
+______________________________
+# Gene expression and survival
+______________________________
+
+For convenience we will create a function that return significant genes from previews analyses
+```{r}
+#' Read DEseq results from csv
+#' @param csv_file The significant gens 
+#' @param num_genes The number of gens to read.
+#' @return The first num_genes as vecor
+#' --------------------------------------------------------------------------
+read_deseq_results <- function(csv_file, num_gens) {
   
+  lines <- readLines(csv_file)
+  gene_list <- c()
+  
+  for (i in 2:min(num_gens, length(lines))) {
+    
+    line <- lines[i]
+    fields <- strsplit(line, ",")[[1]]
+    
+    # Extract the Gene name: e.g. "ENSG00000007171.18"
+    first_field <- gsub("\"", "", fields[1])
+    
+    gene_list <- c(gene_list, first_field[1])
+  }
+  
+  return(gene_list)
+}
+```
+
+### First expeirement
+### Survival Analysis on groups: Lifelong Non-Smoker VS Current Reformed Smoker for < or = 15 yrs
+```{r}
+group1 = "Lifelong Non-Smoker"
+group2 = "Current Reformed Smoker for < or = 15 yrs"
+```
+
+#### Normal tissue samples
+```{r}
+dds <-nsclc.normal.dds
+data<-nsclc.data.normal
+```
+
+top 30 candidates
+```{r}
+gene_list <- read_deseq_results(csv_file = "signif_results_normal_1.csv", num_gens = 30)
+gene_list
+```
+we will using the log-rank test for searching genes that have strong connection to Survival (pvalue < 0.05)   
+
+```{r}
+#A DESeq2 function that can let us extract the normalized values of gene:
+d <- plotCounts(dds, gene="ENSG00000232973.13", intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c(group1, group2)
+d <- d[d$tobacco_smoking_status %in% selected_statuses, ]
 
 
+#Keep sample names for those with top and bottom median of gene for later
+median.1 <- median(d[d$tobacco_smoking_status == group1,]$count)
+median.2 <- median(d[d$tobacco_smoking_status == group2,]$count)
+smoking_status = ifelse(median.1 < median.2, group1, group2)
+median = ifelse(median.1 < median.2, median.1,median.2)
+
+low <- rownames(d[d$tobacco_smoking_status == smoking_status & d$count <= median,])
+high <- rownames(d[d$tobacco_smoking_status == smoking_status & d$count >= median,])
+
+# Take only gene high/low samples 
+nsclc.clin.gene <- nsclc.clin.df[nsclc.clin.df$submitter_id %in% c(data@colData[high,]$submitter_id,
+                                                     data@colData[low,]$submitter_id),]
+
+
+# Add a column that indicates which samples is high/low
+nsclc.clin.gene$expression <- ifelse(nsclc.clin.gene$submitter_id %in% data@colData[high,]$submitter_id, "high", "low")
+
+# Create a survival plot with Log-rank test
+fit = survfit(Surv(overall_survival, deceased) ~ expression, data=nsclc.clin.gene)
+results_df <-surv_pvalue(fit)
+pval <- results_df$pval
+pval
+```
+we found a significant gene ENSG00000232973.13 (CYP1B1-AS1)
+
+Lets see the difference between the counts:  
+```{r}
+ggplot(d[d$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + 
+  labs(title = "CYP1B1-AS1 Expression by Smoking Status",
+       x = "Tobacco Smoking Status",
+       y = "Count",
+       fill = "Smoking Status",
+       color = "Smoking Status") +  # Add labels for axes and legend
+  theme_minimal() +  # Use a minimal theme
+  theme(axis.text.x = element_text(size = 8),  # Rotate x-axis labels
+        plot.title = element_text(hjust = 0.5))  # Center the plot title
+```
+And Plot a survival curve: 
+```{r, fig.width=6, fig.height=6}
+ggsurvplot(fit,
+  data=nsclc.clin.gene,
+  title = "CYP1B1-AS1",
+  xlab = "Time since diagnosis (Days)",
+  legend.title = "expression",
+  legend.labs = c("above median", "below median"),
+  pval=T,
+  risk.table=T,
+  risk.table.col="strata",
+  tables.height = 0.2,
+  ggtheme = theme_bw())
+```
+#### Primary Tumor samples
+```{r}
+dds <-nsclc.tumor.dds
+data<-nsclc.data.tumor
+```
+
+top 30 candidates
+```{r}
+gene_list <- read_deseq_results(csv_file = "signif_results_tumor_1.csv", num_gens = 30)
+gene_list
+```
+we will using the log-rank test for searching genes that have strong connection to Survival (pvalue < 0.05)   
+
+```{r}
+#A DESeq2 function that can let us extract the normalized values of gene:
+d <- plotCounts(dds, gene="ENSG00000007171.18", intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c(group1, group2)
+d <- d[d$tobacco_smoking_status %in% selected_statuses, ]
+
+
+#Keep sample names for those with top and bottom median of gene for later
+median.1 <- median(d[d$tobacco_smoking_status == group1,]$count)
+median.2 <- median(d[d$tobacco_smoking_status == group2,]$count)
+smoking_status = ifelse(median.1 < median.2, group1, group2)
+median = ifelse(median.1 < median.2, median.1,median.2)
+
+low <- rownames(d[d$tobacco_smoking_status == smoking_status & d$count <= median,])
+high <- rownames(d[d$tobacco_smoking_status == smoking_status & d$count >= median,])
+
+# Take only gene high/low samples 
+nsclc.clin.gene <- nsclc.clin.df[nsclc.clin.df$submitter_id %in% c(data@colData[high,]$submitter_id,
+                                                     data@colData[low,]$submitter_id),]
+
+
+# Add a column that indicates which samples is high/low
+nsclc.clin.gene$expression <- ifelse(nsclc.clin.gene$submitter_id %in% data@colData[high,]$submitter_id, "high", "low")
+
+# Create a survival plot with Log-rank test
+fit = survfit(Surv(overall_survival, deceased) ~ expression, data=nsclc.clin.gene)
+results_df <-surv_pvalue(fit)
+pval <- results_df$pval
+pval
+```
+we found a significant gene ENSG00000007171.18 (NOS2)
+
+Lets see the difference between the counts:  
+```{r}
+ggplot(d[d$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + 
+  labs(title = "NOS2 Expression by Smoking Status",
+       x = "Tobacco Smoking Status",
+       y = "Count",
+       fill = "Smoking Status",
+       color = "Smoking Status") +  # Add labels for axes and legend
+  theme_minimal() +  # Use a minimal theme
+  theme(axis.text.x = element_text(size = 8),  # Rotate x-axis labels
+        plot.title = element_text(hjust = 0.5))  # Center the plot title
+```
+And Plot a survival curve: 
+```{r, fig.width=6, fig.height=6}
+ggsurvplot(fit,
+  data=nsclc.clin.gene,
+  title = "NOS2",
+  xlab = "Time since diagnosis (Days)",
+  legend.title = "expression",
+  legend.labs = c("above median", "below median"),
+  pval=T,
+  risk.table=T,
+  risk.table.col="strata",
+  tables.height = 0.2,
+  ggtheme = theme_bw())
+```
+### Now, lets move on to our second expeirement
+### Survival Analysis on groups: Current Smoker VS Current Reformed Smoker for < or = 15 yrs
+```{r}
+group1 = "Current Smoker"
+group2 = "Current Reformed Smoker for < or = 15 yrs"
+```
+
+#### well start like before with Normal tissue samples
+```{r}
+dds <-nsclc.normal.dds
+data<-nsclc.data.normal
+```
+
+top 30 candidates
+```{r}
+gene_list <- read_deseq_results(csv_file = "signif_results_normal_2.csv", num_gens = 30)
+gene_list
+```
+we will using the log-rank test for searching genes that have strong connection to Survival (pvalue < 0.05)   
+
+```{r}
+#A DESeq2 function that can let us extract the normalized values of gene:
+d <- plotCounts(dds, gene="ENSG00000197696.10", intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c(group1, group2)
+d <- d[d$tobacco_smoking_status %in% selected_statuses, ]
+
+
+#Keep sample names for those with top and bottom median of gene for later
+median.1 <- median(d[d$tobacco_smoking_status == group1,]$count)
+median.2 <- median(d[d$tobacco_smoking_status == group2,]$count)
+smoking_status = ifelse(median.1 < median.2, group1, group2)
+median = ifelse(median.1 < median.2, median.1,median.2)
+
+low <- rownames(d[d$tobacco_smoking_status == smoking_status & d$count <= median,])
+high <- rownames(d[d$tobacco_smoking_status == smoking_status & d$count >= median,])
+
+# Take only gene high/low samples 
+nsclc.clin.gene <- nsclc.clin.df[nsclc.clin.df$submitter_id %in% c(data@colData[high,]$submitter_id,
+                                                     data@colData[low,]$submitter_id),]
+
+
+# Add a column that indicates which samples is high/low
+nsclc.clin.gene$expression <- ifelse(nsclc.clin.gene$submitter_id %in% data@colData[high,]$submitter_id, "high", "low")
+
+# Create a survival plot with Log-rank test
+fit = survfit(Surv(overall_survival, deceased) ~ expression, data=nsclc.clin.gene)
+results_df <-surv_pvalue(fit)
+pval <- results_df$pval
+pval
+```
+we found a significant gene ENSG00000197696.10 (NMB)
+
+Lets see the difference between the counts:  
+```{r}
+ggplot(d[d$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + 
+  labs(title = "NMB Expression by Smoking Status",
+       x = "Tobacco Smoking Status",
+       y = "Count",
+       fill = "Smoking Status",
+       color = "Smoking Status") +  # Add labels for axes and legend
+  theme_minimal() +  # Use a minimal theme
+  theme(axis.text.x = element_text(size = 8),  # Rotate x-axis labels
+        plot.title = element_text(hjust = 0.5))  # Center the plot title
+```
+And Plot a survival curve: 
+```{r, fig.width=6, fig.height=6}
+ggsurvplot(fit,
+  data=nsclc.clin.gene,
+  title = "NMB",
+  xlab = "Time since diagnosis (Days)",
+  legend.title = "expression",
+  legend.labs = c("above median", "below median"),
+  pval=T,
+  risk.table=T,
+  risk.table.col="strata",
+  tables.height = 0.2,
+  ggtheme = theme_bw())
+```
+#### Primary Tumor samples
+```{r}
+dds <-nsclc.tumor.dds
+data<-nsclc.data.tumor
+```
+
+top 30 candidates
+```{r}
+gene_list <- read_deseq_results(csv_file = "signif_results_tumor_2.csv", num_gens = 30)
+gene_list
+```
+we will using the log-rank test for searching genes that have strong connection to Survival (pvalue < 0.05)   
+
+```{r}
+#A DESeq2 function that can let us extract the normalized values of gene:
+d <- plotCounts(dds, gene="ENSG00000105825.14", intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c(group1, group2)
+d <- d[d$tobacco_smoking_status %in% selected_statuses, ]
+
+
+#Keep sample names for those with top and bottom median of gene for later
+median.1 <- median(d[d$tobacco_smoking_status == group1,]$count)
+median.2 <- median(d[d$tobacco_smoking_status == group2,]$count)
+smoking_status = ifelse(median.1 < median.2, group1, group2)
+median = ifelse(median.1 < median.2, median.1,median.2)
+
+low <- rownames(d[d$tobacco_smoking_status == smoking_status & d$count <= median,])
+high <- rownames(d[d$tobacco_smoking_status == smoking_status & d$count >= median,])
+
+# Take only gene high/low samples 
+nsclc.clin.gene <- nsclc.clin.df[nsclc.clin.df$submitter_id %in% c(data@colData[high,]$submitter_id,
+                                                     data@colData[low,]$submitter_id),]
+
+
+# Add a column that indicates which samples is high/low
+nsclc.clin.gene$expression <- ifelse(nsclc.clin.gene$submitter_id %in% data@colData[high,]$submitter_id, "high", "low")
+
+# Create a survival plot with Log-rank test
+fit = survfit(Surv(overall_survival, deceased) ~ expression, data=nsclc.clin.gene)
+results_df <-surv_pvalue(fit)
+pval <- results_df$pval
+pval
+```
+we found a significant gene ENSG00000105825.14 (TFPI2)
+
+Lets see the difference between the counts:  
+```{r}
+ggplot(d[d$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + 
+  labs(title = "TFPI2 Expression by Smoking Status",
+       x = "Tobacco Smoking Status",
+       y = "Count",
+       fill = "Smoking Status",
+       color = "Smoking Status") +  # Add labels for axes and legend
+  theme_minimal() +  # Use a minimal theme
+  theme(axis.text.x = element_text(size = 8),  # Rotate x-axis labels
+        plot.title = element_text(hjust = 0.5))  # Center the plot title
+```
+And Plot a survival curve: 
+```{r, fig.width=6, fig.height=6}
+ggsurvplot(fit,
+  data=nsclc.clin.gene,
+  title = "TFPI2",
+  xlab = "Time since diagnosis (Days)",
+  legend.title = "expression",
+  legend.labs = c("above median", "below median"),
+  pval=T,
+  risk.table=T,
+  risk.table.col="strata",
+  tables.height = 0.2,
+  ggtheme = theme_bw())
+```
+### Finally, last expeirement
+### Survival Analysis on groups: Current Reformed Smoker for > 15 yrs, Current Reformed Smoker for < or = 15 yrs
+```{r}
+group1 = "Current Reformed Smoker for > 15 yrs"
+group2 = "Current Reformed Smoker for < or = 15 yrs"
+```
+
+#### Normal tissue samples
+```{r}
+dds <-nsclc.normal.dds
+data<-nsclc.data.normal
+```
+
+top 30 candidates
+```{r}
+gene_list <- read_deseq_results(csv_file = "signif_results_normal_3.csv", num_gens = 30)
+gene_list
+```
+we will using the log-rank test for searching genes that have strong connection to Survival (pvalue < 0.05)   
+
+```{r}
+#A DESeq2 function that can let us extract the normalized values of gene:
+d <- plotCounts(dds, gene="ENSG00000232573.1", intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c(group1, group2)
+d <- d[d$tobacco_smoking_status %in% selected_statuses, ]
+
+
+#Keep sample names for those with top and bottom median of gene for later
+median.1 <- median(d[d$tobacco_smoking_status == group1,]$count)
+median.2 <- median(d[d$tobacco_smoking_status == group2,]$count)
+smoking_status = ifelse(median.1 < median.2, group1, group2)
+median = ifelse(median.1 < median.2, median.1,median.2)
+
+low <- rownames(d[d$tobacco_smoking_status == smoking_status & d$count <= median,])
+high <- rownames(d[d$tobacco_smoking_status == smoking_status & d$count >= median,])
+
+# Take only gene high/low samples 
+nsclc.clin.gene <- nsclc.clin.df[nsclc.clin.df$submitter_id %in% c(data@colData[high,]$submitter_id,
+                                                     data@colData[low,]$submitter_id),]
+
+
+# Add a column that indicates which samples is high/low
+nsclc.clin.gene$expression <- ifelse(nsclc.clin.gene$submitter_id %in% data@colData[high,]$submitter_id, "high", "low")
+
+# Create a survival plot with Log-rank test
+fit = survfit(Surv(overall_survival, deceased) ~ expression, data=nsclc.clin.gene)
+results_df <-surv_pvalue(fit)
+pval <- results_df$pval
+pval
+```
+we found a significant gene ENSG00000232573.1 (RPL3P4)
+
+Lets see the difference between the counts:  
+```{r}
+ggplot(d[d$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + 
+  labs(title = "RPL3P4 Expression by Smoking Status",
+       x = "Tobacco Smoking Status",
+       y = "Count",
+       fill = "Smoking Status",
+       color = "Smoking Status") +  # Add labels for axes and legend
+  theme_minimal() +  # Use a minimal theme
+  theme(axis.text.x = element_text(size = 8),  # Rotate x-axis labels
+        plot.title = element_text(hjust = 0.5))  # Center the plot title
+```
+And Plot a survival curve: 
+```{r, fig.width=6, fig.height=6}
+ggsurvplot(fit,
+  data=nsclc.clin.gene,
+  title = "RPL3P4",
+  xlab = "Time since diagnosis (Days)",
+  legend.title = "expression",
+  legend.labs = c("above median", "below median"),
+  pval=T,
+  risk.table=T,
+  risk.table.col="strata",
+  tables.height = 0.2,
+  ggtheme = theme_bw())
+```
+#### Primary Tumor samples
+```{r}
+dds <-nsclc.tumor.dds
+data<-nsclc.data.tumor
+```
+
+top 30 candidates
+```{r}
+gene_list <- read_deseq_results(csv_file = "signif_results_tumor_3.csv", num_gens = 40)
+gene_list
+```
+we will using the log-rank test for searching genes that have strong connection to Survival (pvalue < 0.05)   
+
+```{r}
+#A DESeq2 function that can let us extract the normalized values of gene:
+d <- plotCounts(dds, gene="ENSG00000232680.2", intgroup="tobacco_smoking_status", returnData=TRUE)
+selected_statuses <- c(group1, group2)
+d <- d[d$tobacco_smoking_status %in% selected_statuses, ]
+
+
+#Keep sample names for those with top and bottom median of gene for later
+median.1 <- median(d[d$tobacco_smoking_status == group1,]$count)
+median.2 <- median(d[d$tobacco_smoking_status == group2,]$count)
+smoking_status = ifelse(median.1 < median.2, group1, group2)
+median = ifelse(median.1 < median.2, median.1,median.2)
+
+low <- rownames(d[d$tobacco_smoking_status == smoking_status & d$count <= median,])
+high <- rownames(d[d$tobacco_smoking_status == smoking_status & d$count >= median,])
+
+# Take only gene high/low samples 
+nsclc.clin.gene <- nsclc.clin.df[nsclc.clin.df$submitter_id %in% c(data@colData[high,]$submitter_id,
+                                                     data@colData[low,]$submitter_id),]
+
+
+# Add a column that indicates which samples is high/low
+nsclc.clin.gene$expression <- ifelse(nsclc.clin.gene$submitter_id %in% data@colData[high,]$submitter_id, "high", "low")
+
+# Create a survival plot with Log-rank test
+fit = survfit(Surv(overall_survival, deceased) ~ expression, data=nsclc.clin.gene)
+results_df <-surv_pvalue(fit)
+pval <- results_df$pval
+pval
+```
+we found a significant gene ENSG00000232680.2 (AC002511.3 )
+
+Lets see the difference between the counts:  
+```{r}
+ggplot(d[d$count < 200,], aes(tobacco_smoking_status, count)) + 
+  geom_boxplot(aes(fill=tobacco_smoking_status)) + 
+  labs(title = "AC002511.3  Expression by Smoking Status",
+       x = "Tobacco Smoking Status",
+       y = "Count",
+       fill = "Smoking Status",
+       color = "Smoking Status") +  # Add labels for axes and legend
+  theme_minimal() +  # Use a minimal theme
+  theme(axis.text.x = element_text(size = 8),  # Rotate x-axis labels
+        plot.title = element_text(hjust = 0.5))  # Center the plot title
+```
+And Plot a survival curve: 
+```{r, fig.width=6, fig.height=6}
+ggsurvplot(fit,
+  data=nsclc.clin.gene,
+  title = "AC002511.3 ",
+  xlab = "Time since diagnosis (Days)",
+  legend.title = "expression",
+  legend.labs = c("above median", "below median"),
+  pval=T,
+  risk.table=T,
+  risk.table.col="strata",
+  tables.height = 0.2,
+  ggtheme = theme_bw())
+```
   ## Primary Tumor  
   ----Add your code-----
