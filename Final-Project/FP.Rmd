@@ -1,0 +1,200 @@
+---
+title: "Bioinformatics Final Project - fetch data TCGA data analysis"
+author: "Amit Gabay"
+output: html_document
+---
+
+Import and Install Packages
+```{r}
+# install BiocManager
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+#install packages
+BiocManager::install("TCGAbiolinks")
+install.packages("tidyverse")
+BiocManager::install("DESeq2")
+BiocManager::install("AnnotationDbi")
+BiocManager::install("org.Hs.eg.db")
+BiocManager::install("EnhancedVolcano")
+
+# import libraries
+library(TCGAbiolinks)
+library(tidyverse)
+library(DESeq2)
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+library(EnhancedVolcano)
+```
+
+Set working dir
+```{r}
+setwd("C:/Users/Amit_g/OneDrive - Technion/Desktop/Bioinformatics_FP")
+```
+
+- View the available TCGA cancer datasets stored in NCI's Genomic Data Commons (GDC)
+```{r}
+cancer_projects <- getGDCprojects()
+```
+
+- Set a query to access TCGA's lung cancer transcriptome data
+```{r}
+gbm.query <- GDCquery(project = "CPTAC-3", data.category = "Transcriptome Profiling")
+```
+
+- view query's results
+```{r}
+query.res <- getResults(gbm.query)
+View(query.res)
+```
+
+- The transcriptome might contain other types of data except mRNA expression
+```{r}
+table(query.res$data_type)
+```
+
+- A standardized preprocessing step for gene expression data analysis includes aligning the raw sequencing reads to the reference genome with a program called STAR to create the counts matrix.
+```{r}
+table(query.res$analysis_workflow_type)
+```
+
+- Note! There are also some normal and other types of samples
+```{r}
+table(query.res$sample_type)
+```
+
+- Fix query
+```{r}
+gbm.query <- GDCquery(
+  project = "CPTAC-3", 
+  data.category = "Transcriptome Profiling",
+  data.type = "Gene Expression Quantification", 
+  workflow.type = "STAR - Counts",
+  sample.type = c("Primary Tumor", "Solid Tissue Normal", "Recurrent Tumor"))
+
+# Make a copy of your original query object
+gbm.query.2 <- gbm.query
+# Extract the results from the query object
+tmp <- gbm.query.2$results[[1]]
+# Remove duplicate cases
+tmp <- tmp[!duplicated(tmp$sample.submitter_id), ]
+# Update the results in the query object
+gbm.query.2$results[[1]] <- tmp
+```
+
+- Download the data
+```{r}
+GDCdownload(gbm.query.2, directory = "C:/Users/Amit_g/OneDrive - Technion/Desktop/Bioinformatics_FP")
+```
+
+- Prepare data
+```{r}
+gbm.data <- GDCprepare(gbm.query.2, directory = "C:/Users/Amit_g/OneDrive - Technion/Desktop/Bioinformatics_FP")
+```
+- Drop NAs
+```{r}
+#str(gbm.data)
+gbm.data.2 <- gbm.data[, !is.na(colData(gbm.data)$tobacco_smoking_status)]
+table(colData(gbm.data.2)$tobacco_smoking_status, useNA = "always")
+```
+
+- Perform DE analysis with DESeq2
+```{r}
+gbm.dds <- DESeqDataSet(gbm.data.2, design = ~tobacco_smoking_status)
+gbm.dds <- DESeq(gbm.dds)
+```
+
+```{r}
+resultsNames(gbm.dds)
+```
+
+- Lifelong non-smoker vs.Current reformed smoker for <= 15 years
+```{r}
+# Shrink LFC
+resLFC <- lfcShrink(gbm.dds, coef="tobacco_smoking_status_Lifelong.Non.Smoker_vs_Current.Reformed.Smoker.for...or...15.yrs", type="apeglm")
+# Add gene symbols
+resLFC$symbol <- mapIds(org.Hs.eg.db,
+                        keys=gsub("\\..*", "", rownames(resLFC)),
+                        column="SYMBOL",
+                        keytype="ENSEMBL",
+                        multiVals="first")
+# Plot volcano
+EnhancedVolcano(resLFC,
+                lab = resLFC$symbol,
+                x = 'log2FoldChange',
+                y = 'padj',
+                labSize=3,
+                FCcutoff=2)
+```
+
+- Current smoker vs. Current reformed smoker for >=15 years
+```{r}
+resLFC.2 <- lfcShrink(gbm.dds, coef="tobacco_smoking_status_Current.Smoker_vs_Current.Reformed.Smoker.for...or...15.yrs", type="apeglm")
+resLFC.2$symbol <- mapIds(org.Hs.eg.db,
+                        keys=gsub("\\..*", "", rownames(resLFC.2)),
+                        column="SYMBOL",
+                        keytype="ENSEMBL",
+                        multiVals="first") 
+EnhancedVolcano(resLFC.2,
+                lab = resLFC.2$symbol,
+                x = 'log2FoldChange',
+                y = 'padj',
+                labSize=3,
+                FCcutoff=2)
+```
+
+- Sort results
+```{r}
+resOrdered <- resLFC[order(resLFC$pvalue),]
+resOrdered
+```
+
+- Look at the first gene (HAS1 - ENSG00000105509.11)
+```{r}
+d <- plotCounts(gbm.dds, gene=rownames(resOrdered)[1], intgroup="sample_type", returnData=TRUE)
+d <- d[d$sample_type != "Solid Tissue Normal",]
+ggplot(d[d$count < 200,], aes(sample_type, count)) + 
+  geom_boxplot(aes(fill=sample_type)) + ggtitle("HAS1")
+``` 
+
+- Keep sample names for those with top and bottom quartiles of HAS1
+```{r}
+quartiles <- quantile(d[d$sample_type == "Primary Tumor",]$count, probs = c(0.25, 0.75))
+quartiles
+low <- rownames(d[d$sample_type == "Primary Tumor" & d$count <= quartiles[1],])
+high <- rownames(d[d$sample_type == "Primary Tumor" & d$count >= quartiles[2],])
+```
+
+## Survival Analysis
+
+- Download TCGA-GBM's clinical data 
+```{r}
+gbm.clin <- GDCquery_clinic("TCGA-GBM", "clinical")
+View(gbm.clin)
+```
+
+- Take only HAS1 high/low samples
+```{r}
+gbm.clin.has1 <- gbm.clin[gbm.clin$submitter_id %in% c(gbm.data@colData[high,]$submitter_id,
+                                                       gbm.data@colData[low,]$submitter_id),]
+```
+
+- Add a column that indicates which samples is high/low
+```{r}
+gbm.clin.has1$expression <- ifelse(gbm.clin.has1$submitter_id %in% gbm.data@colData[high,]$submitter_id,
+                                   "high", "low")
+```
+
+- Create a survival plot with Log-rank test
+```{r}
+TCGAanalyze_survival(
+    data = gbm.clin.has1,
+    clusterCol = "expression",
+    main = "Survival analysis of Glioblastoma\npatients by HAS1 expression",
+    height = 10,
+    width=10,
+    filename = "~/Documents/intro_to_bioinformatics/winter2324/tutorial_9/KM_curv_HAS1.pdf")
+```
+
+# doi:10.1007/s12307-019-00224-2
+

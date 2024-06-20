@@ -1,0 +1,59 @@
+---
+title: "TCGA data analysis"
+author: "Amit Gabay"
+output: html_document
+---
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("TCGAbiolinks")
+library(TCGAbiolinks)
+```
+```{r}
+cancer_projects <- getGDCprojects()
+```
+
+```{r}
+gbm.query <- GDCquery(project = "CPTAC-3", data.category = "Transcriptome Profiling")
+```
+
+```{r}
+query.res <- getResults(gbm.query)
+View(query.res)
+```
+
+```{r}
+table(query.res$data_type)
+```
+
+```{r}
+table(query.res$analysis_workflow_type)
+```
+
+```{r}
+table(query.res$sample_type)
+```
+
+```{r}
+gbm.query <- GDCquery(
+  project = "CPTAC-3", 
+  data.category = "Transcriptome Profiling",
+  data.type = "Gene Expression Quantification", 
+  workflow.type = "STAR - Counts",
+  sample.type = c("Primary Tumor", "Solid Tissue Normal", "Recurrent Tumor"))
+```
+
+```{r}
+# options(timeout=1000)
+# Might take a few minutes (742 MB)
+GDCdownload(gbm.query, directory = "C:/Users/Amit_g/Downloads/tutorial_9.Rmd")
+```
+
+```{r}
+# Might take a few minutes
+gbm.data <- GDCprepare(gbm.query, directory = "C:/Users/Amit_g/Bio_FP")
+```
+```{r}
+```
